@@ -8,7 +8,7 @@ clear all;
 close all;
 clc;
 
-%Add difference path folders
+%Add different path folders
 relativepath_to_generalfolder = 'General';
 addpath(relativepath_to_generalfolder);
 relativepath_to_nasafolder = 'Nasa';
