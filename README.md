@@ -11,4 +11,4 @@ The existing code uploaded here is from an .m file, while the code we are workin
 3. After you've made the desired changes, save this as an .m file as well (especially if you were making changes in a .mlx file).
 4. Copy the code from the updated .m file back into the code on GitHub. This updates the code on GitHub and gives the option to compare with the previous version of the code. This option is not there if you upload the code as an .mlx file. 
 5. When you've added your new version of the code, leave a description of what you've changed before committing the changes so it's clear what you worked on.
-6. If you want to se what has changed between versions navigate to the "History" option and click the new version to see what has been added and/or subtracted.
+6. If you want to see what has changed between versions navigate to the "History" option and click the new version to see what has been added and/or subtracted.
