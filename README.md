@@ -1,6 +1,11 @@
 # CombustionEngine
 
-GitHub has issues reading .mlx files but we can use a bit of a work-around for this and this should not impact our ability to track changes. 
+GitHub has issues reading .mlx files but we can use a work-around this should not impact our ability to track changes. 
+
+INSTRUCTIONS FOR COLLABORATING
+
+1. Accept my collaboration invitation BEFORE making any changes. If you try to make a change before you are a collaborator you will just create a new version of the repository in your own account 
+2. Once you've accepted the invite, make sure you are working in the correct repository: ariana-kdr/CombustionEngine
 
 INSTRUCTIONS FOR USING THE REPOSITORY
 
@@ -12,3 +17,4 @@ The existing code uploaded here is from an .m file, while the code we are workin
 4. Copy the code from the updated .m file back into the code on GitHub. This updates the code on GitHub and gives the option to compare with the previous version of the code. This option is not there if you upload the code as an .mlx file. 
 5. When you've added your new version of the code, leave a description of what you've changed before committing the changes so it's clear what you worked on.
 6. If you want to see what has changed between versions navigate to the "History" option and click the new version to see what has been added and/or subtracted.
+
