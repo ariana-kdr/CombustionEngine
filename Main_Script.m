@@ -4,8 +4,6 @@
 % This version contains the model for an _idealized_ cycle running on _gasoline_.
 %% General
 
-% useless change
-
 clear all;
 close all;
 clc;
