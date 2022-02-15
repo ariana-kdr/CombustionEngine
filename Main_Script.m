@@ -8,7 +8,7 @@ clear all;
 close all;
 clc;
 
-%Add different path folders
+%Add difference path folders
 relativepath_to_generalfolder = 'General';
 addpath(relativepath_to_generalfolder);
 relativepath_to_nasafolder = 'Nasa';
@@ -49,11 +49,13 @@ R_reac = Runiv/M_reac;
 R_prod = Runiv/M_prod;
 % Dimensions
 
-B = 2e-2;                               %Bore [m]
-r = 1e-2;                               %Radius of crank shaft [m]
-S = 2*r;                                %Stroke [m]
-L = 5e-2;                               %Length of rod [m]
-V_c = (5e-2)^3;                         %Clearance volume [m^3]
+B = 68e-3;                               %Bore [m]
+r = 27e-3;                               %Radius of crank shaft [m]
+S = 54e-3;                               %Stroke [m]
+L = 84.7e-3;                               %Length of rod [m]
+r_c = 8.5;                               %Compression Ratio [m]
+V_d = pi/4*B^2*S;                        %Displacement Volume [m^3]
+V_c = V_d/(r_c-1);                       %Clearance volume [m^3]
 %% Idealized Cycle
 % Assumptions:
 %% 
@@ -65,46 +67,33 @@ V_c = (5e-2)^3;                         %Clearance volume [m^3]
 % * _Isochoric_ exhaust 
 % * _Isothermal/Isobaric_ exhaust/intake stroke
 
+%Create empty matrices for each state property
 p_ideal = [];
 V_ideal = [];
 T_ideal = [];
+m_ideal = [];
 theta_crank = [];
 
-p1 = Pref;
-V1 = Vcyl(0,B,r,L,V_c);
-T1 = Tref;
-
-for i = 1:length(Species)
-    h1_i(i) = HNasa(T1,Species(i));
-    s1_i(i) = SNasa(T1,Species(i));
-end
-s1_thermal = Y_reac*s1_i';
-s_1 = s1_thermal - R_reac*log(p1/Pref);
-h_1 = Y_reac*h1_i';
-
-m = (p1*V1)/(R_reac*T1)';
-S1 = s_1*m;
-H_1 = h_1*m;
-
-p_ideal(1) = p1;
-T_ideal(1) = T1;
-V_ideal(1) = V1;
+%Start angle at 0
 theta_crank(1) = 0;
+V_ideal(1) = Vcyl(theta_crank(1),B,r,L,V_c);
 
-dt = 0.0001;
-dthetadt = 3000/60*2*pi
+dt = 0.0001; %Time step to solve differential equations [s]
+dthetadt = 3000/60*2*pi; %Calculate speed of engine in [rad/s]
 time = [0:dt:2*(60/(3000))]; %One rotation takes 0.02 seconds however, one cycle is two revolutions
 
-i = 1;
+i = 1; %Index value
 
+%Create vector array of crank angle and volume as a function of time
 for t = [dt:dt:2*(60/(3000))]
     i = i+1;
     theta_crank(i) = theta_crank(i-1)+dt*dthetadt;
     V_ideal(i) = Vcyl(theta_crank(i),B,r,L,V_c);
 end
 
-theta_crank_degrees = theta_crank.*(180/pi);
+theta_crank_degrees = theta_crank.*(180/pi); %Convert crank angle to degrees for easy life
 
+%Set the angle for the start position of each of the stages
 intake_stroke_start_theta = 0;
 compression_start_theta = 180;
 ignition_start_theta = 360;
@@ -112,6 +101,8 @@ expansion_start_theta = 360;
 valve_exhaust_start_theta = 540;
 exhaust_stroke_start_theta = 540;
 
+%Find the index in the crank angle vector array for which it is at this
+%angle
 intake_stroke_index = max(find(theta_crank_degrees==intake_stroke_start_theta));
 compression_start_index = max(find(theta_crank_degrees<compression_start_theta));
 ignition_start_index = max(find(theta_crank_degrees<ignition_start_theta));
@@ -119,43 +110,52 @@ expansion_start_index = max(find(theta_crank_degrees<expansion_start_theta));
 valve_exhaust_start_index = max(find(theta_crank_degrees<valve_exhaust_start_theta));
 exhaust_stroke_start_index = max(find(theta_crank_degrees<exhaust_stroke_start_theta));
 
+%Find the time instant for each start of the strokes
 intake_stroke_start_time = time(intake_stroke_index);
 compression_start_time = time(compression_start_index);
 ignition_start_time = time(ignition_start_index);
 expansion_start_time = time(expansion_start_index);
 valve_exhaust_start_time = time(valve_exhaust_start_index);
 exhaust_stroke_start_time = time(exhaust_stroke_start_index);
-
-
 % Intake Stroke
+% This process is isothermal and isobaric and it is for now assumed that the 
+% intake is at room temperature and atmospheric pressure. The mass intake is calculated 
+% using the ideal gas law.
 
 i = 0;
 for t = [intake_stroke_start_time:dt:compression_start_time]
     i = i+1;
-    p_ideal(i) = Pref;
+    p_ideal(i) = Pref; 
     T_ideal(i) = Tref;
+    %To calculate the mass taken in whilst keeping T and P constant ideal
+    %gas law is used
+    m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_reac);
 end
-
 % Compression
 
 for t = [compression_start_time:dt:ignition_start_time]
     i = i+1;
+
+    %Calculate the volumetric heat capacity for each molecule
     for j = [1:length(Species)]
         cvj(j) = CvNasa(T_ideal(i-1),Species(j));
     end
     
-    Cv = Y_reac*cvj';
+    Cv = Y_reac*cvj'; %Calculate total heat capacity using mass fractions
 
+    m_ideal(i) = m_ideal(i-1); %Mass stays constant since valves are closed
+
+    %Euler Forward Method to calculate the increase in temperature as a
+    %function of time
     dTdt = -(R_reac*T_ideal(i-1))/(V_ideal(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
 
     T_ideal(i)= T_ideal(i-1)+dt*dTdt;
-    p_ideal(i)= (m*R_reac*T_ideal(i))/(V_ideal(i));
+
+    %Calculate pressure using ideal gas law
+    p_ideal(i)= (m_ideal(i)*R_reac*T_ideal(i))/(V_ideal(i));
 end
 
 plot(V_ideal(1:i),p_ideal)
-
-
-
 % Ignition
 
 
