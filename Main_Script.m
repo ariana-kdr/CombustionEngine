@@ -1,5 +1,11 @@
 %% General
 
+%Known Issues:
+% - Indexing in for loop is not perfect yet
+% - For loop expans each state property matrix increasing run time
+% - Since volume is a function of time ignition and valve exhaust are not
+% instantaneous
+
 clear all;
 close all;
 clc;
@@ -51,12 +57,13 @@ V_d = pi/4*B^2*S;                                                           %Dis
 V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
 %% Idealized Cycle
 % Assumptions:
-% * Both intake and exhaust gases are _ideal gases_ and are at _atmospheric pressure_
-% * _Adiabatic_ compression
-% * _Isochoric_ and _Instantaneous_ combustion
-% * _Adiabatic_ expansion
-% * _Isochoric_ exhaust 
-% * _Isothermal/Isobaric_ exhaust/intake stroke
+% - Both intake and exhaust gases are _ideal gases_ and are at _atmospheric 
+%pressure_
+% - _Adiabatic_ compression
+% - _Isochoric_ and _Instantaneous_ combustion
+% - _Adiabatic_ expansion
+% - _Isochoric_ exhaust 
+% - _Isothermal/Isobaric_ exhaust/intake stroke
 
 %Create empty matrices for each state property
 p_ideal = [];                                                               %Ideal cycle pressure array [Pa]                                                       
@@ -81,33 +88,36 @@ end
 theta_crank_degrees = theta_crank.*(180/pi);                                %Convert crank angle to degrees for easy life
 
 %Set the angle for the start position of each of the stages
-intake_stroke_start_theta = 0;
-compression_start_theta = 180;
-ignition_start_theta = 360;                                                 %These will have to be changed for real cycle
-expansion_start_theta = 360;
-valve_exhaust_start_theta = 540;
-exhaust_stroke_start_theta = 540;
+theta_intake_stroke = 0;
+theta_compression = 180;
+theta_ignition = 360;                                                       %These will have to be changed for real cycle
+theta_expansion = 360;
+theta_valve_exhaust = 540;
+theta_exhaust_stroke = 540;
 
-%Find the index in the crank angle vector array for which it is at this angle
-intake_stroke_index = max(find(theta_crank_degrees==intake_stroke_start_theta));
-compression_start_index = max(find(theta_crank_degrees<compression_start_theta));
-ignition_start_index = max(find(theta_crank_degrees<ignition_start_theta));
-expansion_start_index = max(find(theta_crank_degrees<expansion_start_theta));
-valve_exhaust_start_index = max(find(theta_crank_degrees<valve_exhaust_start_theta));
-exhaust_stroke_start_index = max(find(theta_crank_degrees<exhaust_stroke_start_theta));
+%Find the index in the crank angle vector array for which it is at this
+%angle
+index_intake_stroke = max(find(theta_crank_degrees==theta_intake_stroke));
+%Since angle is never perfectly 180 take max index where it is lower and
+%add one (cheap workaround)
+index_compression = max(find(theta_crank_degrees<theta_compression))+1;
+index_ignition = max(find(theta_crank_degrees<theta_ignition))+1;
+index_expansion = max(find(theta_crank_degrees<theta_expansion))+1;
+index_valve_exhaust = max(find(theta_crank_degrees<theta_valve_exhaust))+1;
+index_exhaust_stroke = max(find(theta_crank_degrees<theta_exhaust_stroke))+1;
 
 %Find the time instant for each start of the strokes
-intake_stroke_start_time = time(intake_stroke_index);
-compression_start_time = time(compression_start_index);
-ignition_start_time = time(ignition_start_index);
-expansion_start_time = time(expansion_start_index);
-valve_exhaust_start_time = time(valve_exhaust_start_index);
-exhaust_stroke_start_time = time(exhaust_stroke_start_index);
+time_intake_stroke = time(index_intake_stroke);
+time_compression = time(index_compression);
+time_ignition = time(index_ignition);
+time_expansion = time(index_expansion);
+time_valve_exhaust = time(index_valve_exhaust);
+time_exhaust_stroke = time(index_exhaust_stroke);
 
 %% Ideal Intake Stroke
 
 i = 0;                                                                      %Index Value
-for t = [intake_stroke_start_time:dt:compression_start_time]                %Start to end time
+for t = [time_intake_stroke:dt:time_compression]                            %Start to end time
     i = i+1;
     p_ideal(i) = Pref;                                                      %Isobaric
     T_ideal(i) = Tref;                                                      %Isothermal
@@ -121,15 +131,14 @@ m1 = m_ideal(i);
 
 %% Ideal Compression
 
-for t = [compression_start_time+dt:dt:ignition_start_time]
+for t = [time_compression+dt:dt:time_ignition]
     i = i+1;                                                                %Keep updating same index as last time
-
+    
     %Calculate the volumetric heat capacity for each molecule
     for j = [1:length(Species)]
-        cvj(j) = CvNasa(T_ideal(i-1),Species(j));
+        Cvj(j) = CvNasa(T_ideal(i-1),Species(j));
     end
-    
-    Cv = Y_reac*cvj';                                                       %Calculate total heat capacity using mass fractions
+    Cv = Y_reac*Cvj';                                                       %Calculate total heat capacity using mass fractions
 
     m_ideal(i) = m_ideal(i-1);                                              %Mass stays constant since valves are closed
 
@@ -140,22 +149,103 @@ for t = [compression_start_time+dt:dt:ignition_start_time]
     p_ideal(i)= (m_ideal(i)*R_reac*T_ideal(i))/(V_ideal(i));                %Ideal Gas Law
 end
 
-plot(V_ideal(1:i),p_ideal)
-
+P2 = p_ideal(i);
+V2 = V_ideal(i);
+T2 = T_ideal(i);
+m2 = m_ideal(i);
 %% Ideal Ignition
 
+%Calculate lower heating value
+for j = [1:length(Species)]
+    h_0(j) = HNasa(Tref,Species(j));                                        %Calculate enthalpy of formation for each species
+    Cv_2i(j) = CvNasa(T2,Species(j));                                       %Volumetric Heat Capacity at T2 for each species
+end
+Cv_2 = Y_reac*Cv_2i';                                                       %Volumetric Heat Capacity of Mixture [J/KgK]
 
+%INDICES WILL HAVE TO BE CHANGED ONCE ETHANOL ADDED 
+Q_lhv = (Y_reac)/(Y_reac(1))*h_0'-Y_prod/(Y_reac(1))*h_0';                  %Lower heating value of gasoline [J/kg] 
+                                                                            %Found to be 4.3416e6 [J/kg] online
+                                                                            
+V3 = V2;                                                                    %Isochoric
+T3 = T2+(Q_lhv*m2*Y_reac(1))/(m2*Cv_2);                                     %Assume instant heating up 
+m3 = m2;                                                                    
+
+p3 = (m3*R_reac*T3)/(V3);                                                   %Ideal Gas Law
+
+i = i+1;                                                                    %Move forward one dt, so not instantaneous
+
+p_ideal(i) = p3;
+T_ideal(i) = T3;
+m_ideal(i) = m3;
 %% Ideal Power Stroke 
 
+for t = [time_expansion+2*dt:dt:time_valve_exhaust]
+    i = i+1;                                                                %Keep updating same index as last time
+    
+    %Calculate the volumetric heat capacity for each molecule
+    for j = [1:length(Species)]
+        Cvj(j) = CvNasa(T_ideal(i-1),Species(j));
+    end
+    Cv = Y_prod*Cvj';                                                       %Calculate total heat capacity using mass fractions
 
+    m_ideal(i) = m_ideal(i-1);                                              %Mass stays constant since valves are closed
+
+    %Euler Forward Method:
+    dTdt = -(R_prod*T_ideal(i-1))/(V_ideal(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
+    T_ideal(i)= T_ideal(i-1)+dt*dTdt;
+
+    p_ideal(i)= (m_ideal(i)*R_prod*T_ideal(i))/(V_ideal(i));                %Ideal Gas Law
+end
+
+P4 = p_ideal(i);
+V4 = V_ideal(i);
+T4 = T_ideal(i);
+m4 = m_ideal(i);
 %% Ideal Valve Exhaust
 
-
+i = i+1;
+p_ideal(i) = Pref;
+T_ideal(i) = Tref;
+m_ideal(i) = (p_ideal(i)*V_ideal(i))/(R_prod*T_ideal(i));
 %% Ideal Exhaust Stroke
 
+for t = [time_exhaust_stroke+2*dt:dt:t_end]
+    i = i+1;
+    p_ideal(i) = Pref;                                                      %Isobaric
+    T_ideal(i) = Tref;                                                      %Isothermal
+    m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_prod);               %Mass intake calculated using ideal gas law
+end
 
-%% Ideal Intake Stroke
+%% Figures
 
+figure 
+hold on 
+set(gca,'FontSize',18) 
+title('Idealized Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [bar]')
+xlim([0 inf])
+ylim([0 inf])
+grid on
+
+plot(V_ideal,p_ideal.*1e-5)
+
+hold off
+
+figure 
+semilogy(V_ideal,p_ideal)
+hold on 
+set(gca,'FontSize',18) 
+title('Idealized Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [Pa]')
+
+xlim([0 inf])
+ylim([0 inf])
+
+grid on 
+
+hold off
 
 %% Functions
 
