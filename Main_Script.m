@@ -1,4 +1,4 @@
-%% General
+% General
 
 %Known Issues:
 % - Indexing in for loop is not perfect yet
@@ -55,6 +55,8 @@ L = 84.7e-3;                                                                %Len
 r_c = 8.5;                                                                  %Compression Ratio [m]
 V_d = pi/4*B^2*S;                                                           %Displacement Volume [m^3]
 V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
+
+w = 50;                                                                     %Angular Veloctiy [hz]                                                                      
 %% Idealized Cycle
 % Assumptions:
 % - Both intake and exhaust gases are _ideal gases_ and are at _atmospheric 
@@ -64,6 +66,8 @@ V_c = V_d/(r_c-1);                                                          %Cle
 % - _Adiabatic_ expansion
 % - _Isochoric_ exhaust 
 % - _Isothermal/Isobaric_ exhaust/intake stroke
+
+% - Angular velocity is _constant_ 
 
 %Create empty matrices for each state property
 p_ideal = [];                                                               %Ideal cycle pressure array [Pa]                                                       
@@ -166,15 +170,16 @@ Cv_2 = Y_reac*Cv_2i';                                                       %Vol
 Q_lhv = (Y_reac)/(Y_reac(1))*h_0'-Y_prod/(Y_reac(1))*h_0';                  %Lower heating value of gasoline [J/kg] 
                                                                             %Found to be 4.3416e6 [J/kg] online
                                                                             
-V3 = V2;                                                                    %Isochoric
-T3 = T2+(Q_lhv*m2*Y_reac(1))/(m2*Cv_2);                                     %Assume instant heating up 
-m3 = m2;                                                                    
+V3  = V2;                                                                   %Isochoric
+Q23 = Q_lhv*m2*Y_reac(1);                                                   %Caclulate total heat gain during combustion
+T3  = T2+Q23/(m2*Cv_2);                                                     %Assume instant heating up 
+m3  = m2;                                                                    
 
-p3 = (m3*R_reac*T3)/(V3);                                                   %Ideal Gas Law
+P3 = (m3*R_reac*T3)/(V3);                                                   %Ideal Gas Law
 
 i = i+1;                                                                    %Move forward one dt, so not instantaneous
 
-p_ideal(i) = p3;
+p_ideal(i) = P3;
 T_ideal(i) = T3;
 m_ideal(i) = m3;
 %% Ideal Power Stroke 
@@ -201,12 +206,15 @@ P4 = p_ideal(i);
 V4 = V_ideal(i);
 T4 = T_ideal(i);
 m4 = m_ideal(i);
+
 %% Ideal Valve Exhaust
 
 i = i+1;
 p_ideal(i) = Pref;
 T_ideal(i) = Tref;
 m_ideal(i) = (p_ideal(i)*V_ideal(i))/(R_prod*T_ideal(i));
+
+Q45 = (Tref - T4)*Cv*m4;                                            %Caclulate total heat loss during exhaust
 %% Ideal Exhaust Stroke
 
 for t = [time_exhaust_stroke+2*dt:dt:t_end]
@@ -215,6 +223,17 @@ for t = [time_exhaust_stroke+2*dt:dt:t_end]
     T_ideal(i) = Tref;                                                      %Isothermal
     m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_prod);               %Mass intake calculated using ideal gas law
 end
+
+%Work, Power & Efficiency Calculations
+W_index = (cumtrapz(V_ideal,p_ideal));                                      %Index of work done throughout cycle [J]
+W = W_index(end);                                                           %Total work done per cyycle [J]
+
+
+P = W*w;                                                                    %Power of engine [W]
+
+n_W = abs(W/Q23)                                                            %Efficiency using work and heat intake
+n_Q = 1 - abs(Q45/Q23)                                                      %Efficiency using heat intake and outtake
+n_C = 1 - abs(Tref/T3)                                                      %Maximum carnot efficiency 
 
 %% Figures
 
@@ -248,6 +267,7 @@ grid on
 hold off
 
 %% Functions
+
 
 function [Vcyl] = Vcyl(theta,B,r,L,V_c)
 %This function is used to calculate the volume of the cylinder 
