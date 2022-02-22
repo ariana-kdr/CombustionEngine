@@ -68,6 +68,7 @@ L = 84.7e-3;                                                                %Len
 r_c = 8.5;                                                                  %Compression Ratio [m]
 V_d = pi/4*B^2*S;                                                           %Displacement Volume [m^3]
 V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
+w = 50;                                                                     %Angular velocity
 %% Idealized Cycle
 % Assumptions:
 % - Both intake and exhaust gases are _ideal gases_ and are at _atmospheric 
@@ -83,6 +84,7 @@ p_ideal = zeros(1,401);                                                         
 V_ideal = zeros(1,401);                                                               %Ideal cycle volume array [m^3]
 T_ideal = zeros(1,401);                                                               %Ideal cycle temperature array [K]
 m_ideal = zeros(1,401);                                                               %Ideal cycle mass array [kg]
+s_ideal = zeros(1,401);                                                               %Ideal cycle entropy 
 theta_crank = zeros(1,401);                                                           %Ideal cycle crank angle array [rad]
 
 %Time Values
@@ -134,6 +136,13 @@ for t = [time_intake_stroke:dt:time_compression]                            %Sta
     i = i+1;
     p_ideal(i) = Pref;                                                      %Isobaric
     T_ideal(i) = Tref;                                                      %Isothermal
+    
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_ideal(i),Species(j));
+    end
+    s_ideal(i)= Y_reac*sj' - R_reac * (log(p_ideal(i))-log(Pref));
+
     m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_reac);               %Mass intake calculated using ideal gas law
 end
 
@@ -160,6 +169,12 @@ for t = [time_compression+dt:dt:time_ignition]
     T_ideal(i)= T_ideal(i-1)+dt*dTdt;
 
     p_ideal(i)= (m_ideal(i)*R_reac*T_ideal(i))/(V_ideal(i));                %Ideal Gas Law
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_ideal(i),Species(j));
+    end
+    s_ideal(i) = Y_reac*sj' - R_reac*(log(p_ideal(i))-log(Pref));
 end
 
 P2 = p_ideal(i);
@@ -183,6 +198,7 @@ Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
 
                                                                             
 V3 = V2;                                                                    %Isochoric
+Q23 = Q_lhv*m2*Y_reac(1);   thank                                                %Caclulate total heat gain during combustion
 T3 = T2+(Q_lhv*m2*Y_reac(1))/(m2*Cv_2);                                     %Assume instant heating up 
 m3 = m2;                                                                    
 
@@ -193,6 +209,12 @@ i = i+1;                                                                    %Mov
 p_ideal(i) = p3;
 T_ideal(i) = T3;
 m_ideal(i) = m3;
+
+%Calculate entropy
+for j = [1:length(Species)]
+        sj(j)= SNasa(T_ideal(i),Species(j));
+end
+s_ideal(i)= Y_reac*sj' - R_reac * (log(p_ideal(i))-log(Pref));
 %% Ideal Power Stroke 
 
 for t = [time_expansion+2*dt:dt:time_valve_exhaust]
@@ -211,6 +233,12 @@ for t = [time_expansion+2*dt:dt:time_valve_exhaust]
     T_ideal(i)= T_ideal(i-1)+dt*dTdt;
 
     p_ideal(i)= (m_ideal(i)*R_prod*T_ideal(i))/(V_ideal(i));                %Ideal Gas Law
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_ideal(i),Species(j));
+    end
+    s_ideal(i)= Y_prod*sj' - R_prod * (log(p_ideal(i))-log(Pref));
 end
 
 P4 = p_ideal(i);
@@ -222,15 +250,42 @@ m4 = m_ideal(i);
 i = i+1;
 p_ideal(i) = Pref;
 T_ideal(i) = Tref;
+
+%Calculate entropy
+for j = [1:length(Species)]
+    sj(j)= SNasa(T_ideal(i),Species(j));
+end
+s_ideal(i)= Y_prod*sj' - R_prod * (log(p_ideal(i))-log(Pref));
+
 m_ideal(i) = (p_ideal(i)*V_ideal(i))/(R_prod*T_ideal(i));
+Q45 = (Tref - T4)*Cv*m4;                                                %Caclulate total heat loss during exhaust
 %% Ideal Exhaust Stroke
 
 for t = [time_exhaust_stroke+2*dt:dt:t_end]
     i = i+1;
     p_ideal(i) = Pref;                                                      %Isobaric
     T_ideal(i) = Tref;                                                      %Isothermal
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_ideal(i),Species(j));
+    end
+    s_ideal(i)= Y_prod*sj' - R_prod * (log(p_ideal(i))-log(Pref));
+
     m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_prod);               %Mass intake calculated using ideal gas law
 end
+
+%Work, Power & Efficiency Calculations
+W_index = (cumtrapz(V_ideal,p_ideal));                                      %Index of work done throughout cycle [J]
+W = W_index(end);                                                           %Total work done per cyycle [J]
+
+
+P = W*w;                                                                    %Power of engine [W]
+
+n_W = abs(W/Q23);                                                           %Efficiency using work and heat intake
+n_Q = 1 - abs(Q45/Q23);                                                     %Efficiency using heat intake and outtake
+n_C = 1 - abs(Tref/T3);                                                     %Maximum carnot efficiency 
+
 
 %% Figures
 
@@ -260,6 +315,20 @@ xlim([0 inf])
 ylim([0 inf])
 
 grid on 
+
+hold off
+
+figure 
+hold on 
+set(gca,'FontSize',18) 
+title('Idealized Cycle')
+xlabel('entropy [kJ/kgK]')
+ylabel('temperature [10^3 K]')
+xlim([0 inf])
+ylim([0 inf])
+grid on
+
+plot(s_ideal/1000,T_ideal/1000)
 
 hold off
 
