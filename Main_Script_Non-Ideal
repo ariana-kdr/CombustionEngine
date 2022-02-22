@@ -1,0 +1,435 @@
+%% General
+
+% Known Issues:
+% - Indexing in for loop is not perfect yet
+% - Since volume is a function of time ignition and valve exhaust are not
+% instantaneous
+% - Q_lhv behaves strangely when ethanol is added to the blend, and in
+% general it has to be reconsidered due to the signs in the code not
+% matching the signs in the slides 
+
+clear all;
+close all;
+clc;
+
+% Add directory of Nasa routines to Matlab-path
+addpath('General/Nasa');    
+
+% Load Nasa Database
+TdataBase = fullfile('General\Nasa','NasaThermalDatabase.mat');
+load(TdataBase);
+
+% Constants 
+global Runiv Pref Tref                                                      %Set global variables (so they cannot be changed)
+Runiv = 8.314472;                                                           %Universal Gas Constant[J/K*mol]
+Pref = 1.01235e5;                                                           %Reference Pressure (1atm) [Pa]
+Tref = 298.15;                                                              %Reference Temperature [K]
+
+% Implementing a mixture of fuels 
+Fuel1 = 'Gasoline';                                                          % Make fuel its own variable for easy changes
+Fuel2 = 'C2H5OH'; 
+Species = Sp(myfind({Sp.Name},{Fuel1, Fuel2,'O2','CO2','H2O','N2'}));               % Subselection of species in database
+NSpecies = length(Species);                                                 % Create variable for length of Species array for later use 
+Mi = [Species.Mass];                                                        % Array of molecular masses for each component
+
+e = 0;                                                                      % ethanol fraction in gasoline; can vary between 0 and 1.0
+
+x = (1 - e)*Species(1).Elcomp(3) + e*Species(2).Elcomp(3);                  % Summing the moles of given ethanol/gasoline ratio for carbon
+y = (1 - e)*Species(1).Elcomp(2) + e*Species(2).Elcomp(2);                  % Summing the moles of given ethanol/gasoline ratio for hydrogen
+z = (1 - e)*Species(1).Elcomp(1) + e*Species(2).Elcomp(1);                  % Summing the moles of given ethanol/gasoline ratio for oxygen
+    
+a = x + y/4 - z/2;
+
+% Number of moles in chemical reaction
+N_reac = [1-e e a 0 0 a*3.76];
+N_prod = [0 0 0 x y/2 a*3.76];
+
+% Mole Fractions using balanced chemical equation
+X_reac = N_reac/sum(N_reac);
+X_prod = N_prod/sum(N_prod);
+
+%Convert to mass fractions
+Y_reac = (X_reac.*Mi)/(X_reac*Mi');
+Y_prod = (X_prod.*Mi)/(X_prod*Mi');
+
+%Molar mass
+M_reac = X_reac*Mi';
+M_prod = X_prod*Mi';
+
+%Gas constants
+R_reac = Runiv/M_reac;
+R_prod = Runiv/M_prod;
+
+%Dimensions (using dimensions found online)
+B = 68e-3;                                                                  %Bore [m]
+r = 27e-3;                                                                  %Radius of crank shaft [m]
+S = 54e-3;                                                                  %Stroke [m]
+L = 84.7e-3;                                                                %Length of rod [m]
+r_c = 8.5;                                                                  %Compression Ratio [m]
+V_d = pi/4*B^2*S;                                                           %Displacement Volume [m^3]
+V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
+w = 50;                                                                     %Angular velocity
+%% Real Cycle 
+%Currently implemented:
+% - Heat loss during: compression, ignition and expansion
+% - Finite rate of combustion
+% - Valve timing for intake
+
+%Remaining:
+% - Heat loss in all other cycles
+% - Friction
+% - Pumping/Negative Cycle
+% - Valve timing for exhaust
+
+%Create empty matrices for each state property
+p_real = zeros(1,401);                                                               %Real cycle pressure array [Pa]                                                       
+V_real = zeros(1,401);                                                               %Real cycle volume array [m^3]
+T_real = zeros(1,401);                                                               %Real cycle temperature array [K]
+m_real = zeros(1,401);                                                               %Real cycle mass array [kg]
+s_real = zeros(1,401);                                                               %Real cycle entropy 
+theta_crank = zeros(1,401);                                                           %Real cycle crank angle array [rad]
+
+%Time Values
+dt = 0.0001;                                                                %Time step to solve differential equations [s]
+dthetadt = 3000/60*2*pi;                                                    %Convert speed of engine to [rad/s]
+t_end = 2*(60/3000);                                                        %End time [s] (one rotation is 0.01 sec however, one cycle is two revolutions)
+time = [0:dt:t_end];                                                        %Time array [s]
+
+%Parameters 
+method_heat_coeff = 'Honenbe';                                              %Use either Woschni or Honenberg relation
+t_w = 30e-3;                                                                %Estimate of thickness wall surrounding cylinder [m]
+k = 14.4;                                                                   %Conductive heat transfer coefficient [W/mK]
+ignition_offset = 25;                                                       %Degrees before TDC where ignition starts
+
+%Create vector array of crank angle and volume as a function of time
+i = 0;                                                                      %Index Value
+for t = [0:dt:t_end]
+    i = i+1;                                                                %Update Index
+    theta_crank(i) = t*dthetadt;                                            %Calculate angle for each time instance
+    V_real(i) = Vcyl(theta_crank(i),B,r,L,V_c);                            %Calculate volume for angle using volume function
+end
+theta_crank_degrees = theta_crank.*(180/pi);                                %Convert crank angle to degrees for easy life
+
+%Set the angle for the start position of each of the stages
+theta_intake_stroke = 0;
+theta_compression = 180;
+theta_ignition = 360;                                                       %These will have to be changed for real cycle
+theta_expansion = 360;
+theta_valve_exhaust = 540;
+theta_exhaust_stroke = 540;
+
+%Find the index in the crank angle vector array for which it is at this
+%angle
+index_intake_stroke = max(find(theta_crank_degrees==theta_intake_stroke));
+%Since angle is never perfectly 180 take max index where it is lower and
+%add one (cheap workaround)
+index_compression = max(find(theta_crank_degrees<theta_compression))+1;
+index_ignition = max(find(theta_crank_degrees<theta_ignition))+1;
+index_expansion = max(find(theta_crank_degrees<theta_expansion))+1;
+index_valve_exhaust = max(find(theta_crank_degrees<theta_valve_exhaust))+1;
+index_exhaust_stroke = max(find(theta_crank_degrees<theta_exhaust_stroke))+1;
+
+%Find the time instant for each start of the strokes
+time_intake_stroke = time(index_intake_stroke);
+time_compression = time(index_compression);
+time_ignition = time(index_ignition);
+time_expansion = time(index_expansion);
+time_valve_exhaust = time(index_valve_exhaust);
+time_exhaust_stroke = time(index_exhaust_stroke);
+
+%% Real Intake Stroke
+%Still the same as ideal, have to add negative work
+
+i = 0;                                                                      %Index Value
+for t = [time_intake_stroke:dt:time_compression]                            %Start to end time
+    i = i+1;
+    p_real(i) = Pref;                                                      %Isobaric
+    T_real(i) = Tref;                                                      %Isothermal
+    
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_real(i),Species(j));
+    end
+    s_real(i)= Y_reac*sj' - R_reac * (log(p_real(i))-log(Pref));
+
+    m_real(i) = (p_real(i)*V_real(i))/(T_real(i)*R_reac);                   %Mass intake calculated using ideal gas law
+end
+
+P1 = p_real(i);
+V1 = V_real(i);
+T1 = T_real(i);
+m1 = m_real(i);
+
+%% Real compression
+%No longer adiabatic, heat loss to surroundings is implemented
+
+for t = [time_compression+dt:dt:time_ignition]
+    i = i+1;                                                                %Keep updating same index as last time
+
+    %Calculate the volumetric heat capacity for each molecule
+    for j = [1:length(Species)]
+        Cvj(j) = CvNasa(T_real(i-1),Species(j));
+    end
+    Cv = Y_reac*Cvj';                                                       %Calculate total heat capacity using mass fractions
+
+    m_real(i) = m_real(i-1);                                                %Mass stays constant since valves are closed
+
+    %Calculate thermal resistance depending on method selected
+    if method_heat_coeff == 'Woschni'
+        alpha = 1/(1/Woschni(B,p_real(i-1),T_real(i-1),S)+t_w/k);           %Thermal Resistance
+    else 
+        alpha = 1/(1/Honenberg(p_real(i-1),T_real(i-1),V_real(i-1),S)+t_w/k); %Total Thermal Resistance
+    end
+
+    %Euler Forward Method:   
+    dTdt = -(alpha*Acyl(theta_crank(i-1),B,r,L))/(m_real(i)*Cv)*(T_real(i-1)-Tref)-(R_reac*T_real(i-1))/(V_real(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
+    T_real(i)= T_real(i-1)+dt*dTdt;
+
+    p_real(i)= (m_real(i)*R_reac*T_real(i))/(V_real(i));                    %Ideal Gas Law
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_real(i),Species(j));
+    end
+    s_real(i) = Y_reac*sj' - R_reac*(log(p_real(i))-log(Pref));
+end
+
+P2 = p_real(i);
+V2 = V_real(i);
+T2 = T_real(i);
+m2 = m_real(i);
+%% Real Ignition
+
+%Calculate lower heating value
+for j = [1:length(Species)]
+    h_0(j) = HNasa(Tref,Species(j));                                        %Calculate enthalpy of formation for each species
+    Cv_2i(j) = CvNasa(T2,Species(j));                                       %Volumetric Heat Capacity at T2 for each species
+end
+Cv_2 = Y_reac*Cv_2i';                                                       %Volumetric Heat Capacity of Mixture [J/KgK]
+
+% Needs fixing for addition of ethanol
+% Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0' + ...
+%         Y_reac/(Y_reac(2))*h_0' - Y_prod/(Y_reac(2))*h_0';                  %Lower heating value of gasoline + ethanol[J/kg] 
+%                                                                             %Found to be 4.3416e6 [J/kg] online for gasoline
+Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
+                                                                       
+V3 = V2;                                                                    %Isochoric
+Q23 = Q_lhv*m2*Y_reac(1);                                                   %Caclulate total heat gain during combustion
+T3 = T2+(Q_lhv*m2*Y_reac(1))/(m2*Cv_2);                                     %Assume instant heating up 
+m3 = m2;                                                                    
+
+p3 = (m3*R_reac*T3)/(V3);                                                   %Ideal Gas Law
+
+n = 3;                                                                      %Wiebe Form Factor (experimental)
+a = 5;                                                                      %Wiebe Efficiency Factor (expirimental)
+theta_s = theta_ignition*pi/180;                                            %Start angle of combustion [rad]
+theta_d = ignition_offset*pi/180;                                           %Combustion duration [rad]
+
+for t = [time_ignition+dt:dt:time_expansion]
+    i = i+1;
+    %Calculate lower heating value
+    for j = [1:length(Species)]
+        h_0(j) = HNasa(Tref,Species(j));                                    %Calculate enthalpy of formation for each species
+        Cv_2i(j) = CvNasa(T_real(i-1),Species(j));                          %Volumetric Heat Capacity at T for each species
+    end
+    Cv_2_reac = Y_reac*Cv_2i';                                              %Volumetric Heat Capacity of Reactants [J/KgK]
+    Cv_2_prod = Y_prod*Cv_2i';                                              %Volumetric Heat Capacity of Products [J/KgK]
+
+    %Calculate the Heat Capacity and gas constant of the mixture using the
+    %fraction of mass that has combusted (Wiebe Function)
+    Cv_2 = (1-Wiebe(n,a,theta_crank(i-1),theta_s,theta_d))*Cv_2_reac+Wiebe(n,a,theta_crank(i-1),theta_s,theta_d)*Cv_2_prod;
+    R = (1-Wiebe(n,a,theta_crank(i-1),theta_s,theta_d))*R_reac+Wiebe(n,a,theta_crank(i-1),theta_s,theta_d)*R_prod;
+
+    m_real(i) = m_real(i-1);                                                %Mass stays constant since valves are closed
+    m_f = Y_reac(1)*m_real(i);                                              %Mass of fuel using mass composition [kg]
+
+     %Calculate thermal resistance depending on method selected
+    if method_heat_coeff == 'Woschni'
+        alpha = 1/(1/Woschni(B,p_real(i-1),T_real(i-1),S)+t_w/k);
+    else 
+        alpha = 1/(1/Honenberg(p_real(i-1),T_real(i-1),V_real(i-1),S)+t_w/k);
+    end
+
+    %Euler Forward Method
+    dTdt = (Q_lhv)/(m_real(i-1)*Cv_2)*dmdtheta(m_f,n,a,theta_crank(i-1),theta_s,theta_d)*dthetadt-(alpha*Acyl(theta_crank(i-1),B,r,L))/(m_real(i)*Cv)*(T_real(i-1)-Tref)-(R*T_real(i-1))/(V_real(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
+    T_real(i)= T_real(i-1)+dt*dTdt;
+
+    p_real(i)= (m_real(i)*R*T_real(i))/(V_real(i));                         %Ideal Gas Law
+end
+
+%Calculate entropy
+for j = [1:length(Species)]
+        sj(j)= SNasa(T_real(i),Species(j));
+end
+s_real(i)= Y_reac*sj' - R_reac * (log(p_real(i))-log(Pref));
+%% Real Power Stroke 
+
+for t = [time_expansion+dt:dt:time_valve_exhaust]
+    i = i+1;                                                                %Keep updating same index as last time
+
+    %Calculate the volumetric heat capacity for each molecule
+    for j = [1:length(Species)]
+        Cvj(j) = CvNasa(T_real(i-1),Species(j));
+    end
+    Cv = Y_prod*Cvj';                                                       %Calculate total heat capacity using mass fractions
+
+    m_real(i) = m_real(i-1);                                                %Mass stays constant since valves are closed
+
+    %Calculate thermal resistance depending on method selected
+    if method_heat_coeff == 'Woschni'
+        alpha = 1/(1/Woschni(B,p_real(i-1),T_real(i-1),S)+t_w/k);
+    else 
+        alpha = 1/(1/Honenberg(p_real(i-1),T_real(i-1),V_real(i-1),S)+t_w/k);
+    end
+
+    %Euler Forward Method:
+    dTdt = -(alpha*Acyl(theta_crank(i-1),B,r,L))/(m_real(i)*Cv)*(T_real(i-1)-Tref)-(R_prod*T_real(i-1))/(V_real(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
+    T_real(i)= T_real(i-1)+dt*dTdt;
+
+    p_real(i)= (m_real(i)*R_prod*T_real(i))/(V_real(i));                    %Ideal Gas Law
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_real(i),Species(j));
+    end
+    s_real(i)= Y_prod*sj' - R_prod * (log(p_real(i))-log(Pref));
+end
+
+i_power = i;
+
+P4 = p_real(i);
+V4 = V_real(i);
+T4 = T_real(i);
+m4 = m_real(i);
+%% Real Valve Exhaust
+%Still needs to be changed for real cycle
+
+i = i+1;
+p_real(i) = Pref;
+T_real(i) = Tref;
+m_real(i) = (p_real(i)*V_real(i))/(R_prod*T_real(i));
+
+%Calculate entropy
+for j = [1:length(Species)]
+    sj(j)= SNasa(T_real(i),Species(j));
+end
+s_real(i)= Y_prod*sj' - R_prod * (log(p_real(i))-log(Pref));
+
+Q45 = (Tref - T4)*Cv*m4;                                                    %Caclulate total heat loss during exhaust
+%% Real Exhaust Stroke
+%Still needs to be changed for real cycle
+
+for t = [time_exhaust_stroke+2*dt:dt:t_end]
+    i = i+1;
+    p_real(i) = Pref;                                                       %Isobaric
+    T_real(i) = Tref;                                                       %Isothermal
+    m_real(i) = (p_real(i)*V_real(i))/(T_real(i)*R_prod);                   %Mass intake calculated using ideal gas law
+
+    %Calculate entropy
+    for j = [1:length(Species)]
+        sj(j)= SNasa(T_real(i),Species(j));
+    end
+    s_real(i)= Y_prod*sj' - R_prod * (log(p_real(i))-log(Pref));
+end
+%% Work, Power & Efficiency Calculations
+%W_index = (cumtrapz(V_real,p_real));                                        %Index of work done throughout cycle [J]
+%W = W_index(end);                                                           %Total work done per cyycle [J]
+
+
+%P = W*w;                                                                    %Power of engine [W]
+
+%n_W = abs(W/Q23);                                                           %Efficiency using work and heat intake
+%n_Q = 1 - abs(Q45/Q23);                                                     %Efficiency using heat intake and outtake
+%n_C = 1 - abs(Tref/T3);                                                     %Maximum carnot efficiency 
+
+
+%% Figures
+
+figure 
+hold on 
+set(gca,'FontSize',18) 
+title('Real Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [bar]')
+xlim([0 inf])
+ylim([0 inf])
+grid on
+
+plot(V_real,p_real.*1e-5)
+
+hold off
+
+figure 
+semilogy(V_real,p_real)
+hold on 
+set(gca,'FontSize',18) 
+title('Real Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [Pa]')
+
+xlim([0 inf])
+ylim([0 inf])
+
+grid on 
+
+hold off
+
+figure 
+hold on 
+set(gca,'FontSize',18) 
+title('Real Cycle')
+xlabel('entropy [kJ/kgK]')
+ylabel('temperature [10^3 K]')
+xlim([0 inf])
+ylim([0 inf])
+grid on
+
+plot(s_real/1000,T_real/1000)
+
+hold off
+
+%% Functions
+
+function [Vcyl] = Vcyl(theta,B,r,L,V_c)
+%This function is used to calculate the volume of the cylinder 
+%   See lecture for derivation of formula
+    x = r*cos(theta)+sqrt(L^2-r^2*sin(theta)^2);                            %Distance from center of crankshaft to center of piston head [m]
+    d = L+r-x;                                                              %Distance of top of piston head to its maximum height [m]
+
+    Vcyl = pi/4*B^2*d+V_c;                                                  %Cylinder Volume [m^3]
+end
+
+function [Acyl] = Acyl(theta,B,r,L)
+%Calculate cylinder area 
+    x = r*cos(theta)+sqrt(L^2-r^2*sin(theta)^2);                            %Distance from center of crankshaft to center of piston head [m]
+    d = L+r-x;                                                              %Distance of top of piston head to its maximum height [m]
+
+    Acyl = pi*B*d+2*pi/4*B^2;
+end
+
+function [dVdt] = dVdt(theta,dthetadt,B,r,L)
+%Calculate derivative of volume with respect to time for given theta
+    dVdt = pi/4*B^2*(dthetadt*r*sin(theta)+0.5*(dthetadt*r^2*sin(2*theta))/(sqrt(L^2-0.5*r^2*(1-cos(2*theta)))));
+end
+
+function [alpha] = Woschni(B,p,T,S)
+%Calculate heat transfer coefficient using Woschni Relation
+    v_p = 2*(3000)/(60)*S;                                                  %Average piston speed (used in head coeff relations)
+    alpha = 3.26*B^(-0.2)*p^(0.8)*T^(-0.55)*(2.28*v_p)^(0.8);
+end
+
+function [alpha] = Honenberg(p,T,V,S)
+%Calculate heat transfer coefficient using Honenberg Relation
+    v_p = 2*(3000)/(60)*S;                                                  %Average piston speed (used in head coeff relations)
+    alpha = 3.26*p^(0.8)*T^(-0.4)*V^(-0.06)*(v_p+1.4)^0.8;
+end
+
+function [x_frac] = Wiebe(n,a,theta,theta_s,theta_d)
+%Fraction of mass combusted using Wiebe Function
+    x_frac = 1-exp(-a*((theta-theta_s)/theta_d)^n);
+end
+
+function [dmdtheta] = dmdtheta(m_f,n,a,theta,theta_s,theta_d)
+%Wiebe function from project manual 
+    dmdtheta = m_f*n*a*(((theta-theta_s)/theta_d)^(n-1))/(theta_d)*exp(-a*((theta-theta_s)/theta_d)^n);
+end
