@@ -100,21 +100,22 @@ method_heat_coeff = 'Honenbe';                                              %Use
 t_w = 30e-3;                                                                %Estimate of thickness wall surrounding cylinder [m]
 k = 14.4;                                                                   %Conductive heat transfer coefficient [W/mK]
 ignition_offset = 25;                                                       %Degrees before TDC where ignition starts
+ignition_duration = 40;
 
 %Create vector array of crank angle and volume as a function of time
 i = 0;                                                                      %Index Value
 for t = [0:dt:t_end]
     i = i+1;                                                                %Update Index
     theta_crank(i) = t*dthetadt;                                            %Calculate angle for each time instance
-    V_real(i) = Vcyl(theta_crank(i),B,r,L,V_c);                            %Calculate volume for angle using volume function
+    V_real(i) = Vcyl(theta_crank(i),B,r,L,V_c);                             %Calculate volume for angle using volume function
 end
 theta_crank_degrees = theta_crank.*(180/pi);                                %Convert crank angle to degrees for easy life
 
 %Set the angle for the start position of each of the stages
 theta_intake_stroke = 0;
-theta_compression = 180;
-theta_ignition = 360;                                                       %These will have to be changed for real cycle
-theta_expansion = 360;
+theta_compression = 240;
+theta_ignition = 360-ignition_offset;                                       
+theta_expansion = theta_ignition+ignition_duration;
 theta_valve_exhaust = 540;
 theta_exhaust_stroke = 540;
 
@@ -203,31 +204,22 @@ m2 = m_real(i);
 %Calculate lower heating value
 for j = [1:length(Species)]
     h_0(j) = HNasa(Tref,Species(j));                                        %Calculate enthalpy of formation for each species
-    Cv_2i(j) = CvNasa(T2,Species(j));                                       %Volumetric Heat Capacity at T2 for each species
 end
-Cv_2 = Y_reac*Cv_2i';                                                       %Volumetric Heat Capacity of Mixture [J/KgK]
-
 % Needs fixing for addition of ethanol
 % Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0' + ...
 %         Y_reac/(Y_reac(2))*h_0' - Y_prod/(Y_reac(2))*h_0';                  %Lower heating value of gasoline + ethanol[J/kg] 
 %                                                                             %Found to be 4.3416e6 [J/kg] online for gasoline
 Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
-                                                                       
-V3 = V2;                                                                    %Isochoric
-Q23 = Q_lhv*m2*Y_reac(1);                                                   %Caclulate total heat gain during combustion
-T3 = T2+(Q_lhv*m2*Y_reac(1))/(m2*Cv_2);                                     %Assume instant heating up 
-m3 = m2;                                                                    
-
-p3 = (m3*R_reac*T3)/(V3);                                                   %Ideal Gas Law
 
 n = 3;                                                                      %Wiebe Form Factor (experimental)
 a = 5;                                                                      %Wiebe Efficiency Factor (expirimental)
 theta_s = theta_ignition*pi/180;                                            %Start angle of combustion [rad]
-theta_d = ignition_offset*pi/180;                                           %Combustion duration [rad]
+theta_d = ignition_duration*pi/180;                                           %Combustion duration [rad]
+
+Q23 = Q_lhv*m2*Y_reac(1);
 
 for t = [time_ignition+dt:dt:time_expansion]
     i = i+1;
-    %Calculate lower heating value
     for j = [1:length(Species)]
         h_0(j) = HNasa(Tref,Species(j));                                    %Calculate enthalpy of formation for each species
         Cv_2i(j) = CvNasa(T_real(i-1),Species(j));                          %Volumetric Heat Capacity at T for each species
@@ -360,17 +352,17 @@ plot(V_real,p_real.*1e-5)
 hold off
 
 figure 
-semilogy(V_real,p_real)
 hold on 
 set(gca,'FontSize',18) 
-title('Real Cycle')
+title('Comparison')
 xlabel('Volume [m^3]')
-ylabel('Pressure [Pa]')
-
+ylabel('Pressure [bar]')
 xlim([0 inf])
 ylim([0 inf])
+grid on
 
-grid on 
+plot(V_ideal,p_ideal.*1e-5)
+plot(V_real,p_real.*1e-5)
 
 hold off
 
@@ -378,8 +370,8 @@ figure
 hold on 
 set(gca,'FontSize',18) 
 title('Real Cycle')
-xlabel('entropy [kJ/kgK]')
-ylabel('temperature [10^3 K]')
+xlabel('Entropy [kJ/kgK]')
+ylabel('Temperature [10^3 K]')
 xlim([0 inf])
 ylim([0 inf])
 grid on
@@ -387,7 +379,6 @@ grid on
 plot(s_real/1000,T_real/1000)
 
 hold off
-
 %% Functions
 
 function [Vcyl] = Vcyl(theta,B,r,L,V_c)
@@ -403,7 +394,7 @@ function [Acyl] = Acyl(theta,B,r,L)
 %Calculate cylinder area 
     x = r*cos(theta)+sqrt(L^2-r^2*sin(theta)^2);                            %Distance from center of crankshaft to center of piston head [m]
     d = L+r-x;                                                              %Distance of top of piston head to its maximum height [m]
-
+    
     Acyl = pi*B*d+2*pi/4*B^2;
 end
 
