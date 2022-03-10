@@ -1,21 +1,28 @@
 %% General
 
+
 % Known Issues:
 % - Indexing in for loop is not perfect yet
 % - Since volume is a function of time ignition and valve exhaust are not
 % instantaneous
-% - Ts diagram needs fixing 
+% - Q_lhv behaves strangely when ethanol is added to the blend, and in
+% general it has to be reconsidered due to the signs in the code not
+% matching the signs in the slides 
+
 
 clear all;
 close all;
 clc;
 
+
 % Add directory of Nasa routines to Matlab-path
 addpath('General/Nasa');    
+
 
 % Load Nasa Database
 TdataBase = fullfile('General\Nasa','NasaThermalDatabase.mat');
 load(TdataBase);
+
 
 % Constants 
 global Runiv Pref Tref                                                      %Set global variables (so they cannot be changed)
@@ -23,40 +30,14 @@ Runiv = 8.314472;                                                           %Uni
 Pref = 1.01235e5;                                                           %Reference Pressure (1atm) [Pa]
 Tref = 298.15;                                                              %Reference Temperature [K]
 
-% Implementing a mixture of fuels 
+
+% Loading chemical properties 
 Fuel1 = 'Gasoline';                                                          % Make fuel its own variable for easy changes
 Fuel2 = 'C2H5OH'; 
 Species = Sp(myfind({Sp.Name},{Fuel1, Fuel2,'O2','CO2','H2O','N2'}));               % Subselection of species in database
 NSpecies = length(Species);                                                 % Create variable for length of Species array for later use 
 Mi = [Species.Mass];                                                        % Array of molecular masses for each component
 
-e = 0.05;                                                                    % ethanol fraction in gasoline; can vary between 0 and 1.0
-
-x = (1 - e)*Species(1).Elcomp(3) + e*Species(2).Elcomp(3);                  % Summing the moles of given ethanol/gasoline ratio for carbon
-y = (1 - e)*Species(1).Elcomp(2) + e*Species(2).Elcomp(2);                  % Summing the moles of given ethanol/gasoline ratio for hydrogen
-z = (1 - e)*Species(1).Elcomp(1) + e*Species(2).Elcomp(1);                  % Summing the moles of given ethanol/gasoline ratio for oxygen
-    
-a = x + y/4 - z/2;
-
-% Number of moles in chemical reaction
-N_reac = [1-e e a 0 0 a*3.76];
-N_prod = [0 0 0 x y/2 a*3.76];
-
-% Mole Fractions using balanced chemical equation
-X_reac = N_reac/sum(N_reac);
-X_prod = N_prod/sum(N_prod);
-
-%Convert to mass fractions
-Y_reac = (X_reac.*Mi)/(X_reac*Mi');
-Y_prod = (X_prod.*Mi)/(X_prod*Mi');
-
-%Molar mass
-M_reac = X_reac*Mi';
-M_prod = X_prod*Mi';
-
-%Gas constants
-R_reac = Runiv/M_reac;
-R_prod = Runiv/M_prod;
 
 %Dimensions (using dimensions found online)
 B = 68e-3;                                                                  %Bore [m]
@@ -66,39 +47,70 @@ L = 84.7e-3;                                                                %Len
 r_c = 8.5;                                                                  %Compression Ratio [m]
 V_d = pi/4*B^2*S;                                                           %Displacement Volume [m^3]
 V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
-w = 50;                                                                     %Angular velocity
-%% Idealized Cycle
-% Assumptions:
-% - Both intake and exhaust gases are _ideal gases_ and are at _atmospheric 
-%pressure_
-% - _Adiabatic_ compression
-% - _Isochoric_ and _Instantaneous_ combustion
-% - _Adiabatic_ expansion
-% - _Isochoric_ exhaust 
-% - _Isothermal/Isobaric_ exhaust/intake stroke
+%% ideal Cycle 
+%Currently implemented:
+% - Heat loss during: compression, ignition and expansion
+% - Finite rate of combustion
+% - Valve timing for intake
+
+
+%Remaining:
+% - Heat loss in all other cycles
+% - Friction
+% - Pumping/Negative Cycle
+% - Valve timing for exhaust
+
 
 %Create empty matrices for each state property
-p_ideal = zeros(1,401);                                                               %Ideal cycle pressure array [Pa]                                                       
-V_ideal = zeros(1,401);                                                               %Ideal cycle volume array [m^3]
-T_ideal = zeros(1,401);                                                               %Ideal cycle temperature array [K]
-m_ideal = zeros(1,401);                                                               %Ideal cycle mass array [kg]
-s_ideal = zeros(1,401);                                                               %Ideal cycle entropy 
-theta_crank = zeros(1,401);                                                           %Ideal cycle crank angle array [rad]
 
+steps = 4000;                                                                           %Number of steps to be used for cycle. 10000 seems to be a good balance between precision and speed
+
+theta_crank = zeros(1,steps);                                                          %ideal cycle crank angle array [rad]
+p_ideal = zeros(1,steps);                                                               %ideal cycle pressure array [Pa]                                                       
+V_ideal = zeros(1,steps);                                                               %ideal cycle volume array [m^3]
+T_ideal = zeros(1,steps);                                                               %ideal cycle temperature array [K]
+m_ideal = zeros(1,steps);                                                               %ideal cycle mass array [kg]
+s_ideal = zeros(1,steps);                                                               %ideal cycle entropy 
+Q_in_ideal = zeros(1,steps);                                                           %Total heat in in ideal cycle [J]
+
+%Create struct to combine all the results of the model
+
+eth = [0,0.05,0.10,0.15,0.2,0.4,0.6,0.8];                                                                  % ethanol fractions (can be any string of numbers between 0 and 1)
+n_eth = length(eth);                                                               % number of ethanol blends considered
+
+
+Results = struct('Blend',[],'Percentage', [], 'Volume',[],'Pressure',[],'Temperature',[],'Entropy',[],'Work',[],'Heat',[], 'Efficiency', [], 'Power', []); 
+
+for t = 1:n_eth
+    Results(t).Blend = 100*eth(t) + "% ethanol";
+end
+
+
+                                                                          
 %Time Values
-dt = 0.0001;                                                                %Time step to solve differential equations [s]
-dthetadt = 3000/60*2*pi;                                                    %Convert speed of engine to [rad/s]
 t_end = 2*(60/3000);                                                        %End time [s] (one rotation is 0.01 sec however, one cycle is two revolutions)
+dt = t_end/(steps-1);                                                       %Time step to solve differential equations [s]
+dthetadt = 3000/60*2*pi;                                                    %Convert speed of engine to [rad/s]
 time = [0:dt:t_end];                                                        %Time array [s]
+
+
+%Parameters 
+method_heat_coeff = 'Honenbe';                                              %Use either Woschni or Honenberg relation
+t_w = 30e-3;                                                                %Estimate of thickness wall surrounding cylinder [m]
+k = 14.4;                                                                   %Conductive heat transfer coefficient [W/mK]
+ignition_offset = 25;                                                       %Degrees before TDC where ignition starts
+ignition_duration = 40;
+
 
 %Create vector array of crank angle and volume as a function of time
 i = 0;                                                                      %Index Value
 for t = [0:dt:t_end]
     i = i+1;                                                                %Update Index
     theta_crank(i) = t*dthetadt;                                            %Calculate angle for each time instance
-    V_ideal(i) = Vcyl(theta_crank(i),B,r,L,V_c);                            %Calculate volume for angle using volume function
+    V_ideal(i) = Vcyl(theta_crank(i),B,r,L,V_c);                             %Calculate volume for angle using volume function
 end
 theta_crank_degrees = theta_crank.*(180/pi);                                %Convert crank angle to degrees for easy life
+
 
 %Set the angle for the start position of each of the stages
 theta_intake_stroke = 0;
@@ -126,6 +138,44 @@ time_ignition = time(index_ignition);
 time_expansion = time(index_expansion);
 time_valve_exhaust = time(index_valve_exhaust);
 time_exhaust_stroke = time(index_exhaust_stroke);
+
+p = 0;
+for e = eth
+p = p + 1;
+
+%Calculate Fuel Properties
+x = (1 - e)*Species(1).Elcomp(3) + e*Species(2).Elcomp(3);                  % Summing the moles of given ethanol/gasoline ratio for carbon
+y = (1 - e)*Species(1).Elcomp(2) + e*Species(2).Elcomp(2);                  % Summing the moles of given ethanol/gasoline ratio for hydrogen
+z = (1 - e)*Species(1).Elcomp(1) + e*Species(2).Elcomp(1);                  % Summing the moles of given ethanol/gasoline ratio for oxygen
+
+a = x + y/4 - z/2;
+
+
+% Number of moles in chemical reaction
+N_reac = [1-e e a 0 0 a*3.76];
+N_prod = [0 0 0 x y/2 a*3.76];
+
+
+% Mole Fractions using balanced chemical equation
+X_reac = N_reac/sum(N_reac);
+X_prod = N_prod/sum(N_prod);
+
+
+%Convert to mass fractions
+Y_reac = (X_reac.*Mi)/(X_reac*Mi');
+Y_prod = (X_prod.*Mi)/(X_prod*Mi');
+
+
+%Molar mass
+M_reac = X_reac*Mi';
+M_prod = X_prod*Mi';
+
+
+%Gas constants
+R_reac = Runiv/M_reac;
+R_prod = Runiv/M_prod;
+%% ideal Intake Stroke
+%Still the same as ideal, have to add negative work
 
 %% Ideal Intake Stroke
 
@@ -277,64 +327,74 @@ for t = [time_exhaust_stroke+2*dt:dt:t_end]
     m_ideal(i) = (p_ideal(i)*V_ideal(i))/(T_ideal(i)*R_prod);               %Mass intake calculated using ideal gas law
 end
 
-%Work, Power & Efficiency Calculations
-W_index = (cumtrapz(V_ideal,p_ideal));                                      %Index of work done throughout cycle [J]
-W = W_index(end);                                                           %Total work done per cycle [J]
+%% Work, Power & Efficiency Calculations
+W_index = (cumtrapz(V_ideal,p_ideal));                                        %Index of work done throughout cycle [J]
+W = W_index(end);                                                           %Total work done per cyycle [J]
 
 
-P = W*w;                                                                    %Power of engine [W]
 
-n_W = abs(W/Q23);                                                           %Efficiency using work and heat intake
-n_Q = 1 - abs(Q45/Q23);                                                     %Efficiency using heat intake and outtake
-n_C = 1 - abs(Tref/T3);                                                     %Maximum carnot efficiency 
+
+P = W*3000/120;                                                                    %Power of engine [W]
+
+Q_in = Q23;                                                      %Heat added per cycle
+n_W = abs(W/Q_in);                                                           %Efficiency using work and heat intake                                                  
+n_C = 1 - abs(min(T_ideal)/max(T_ideal));                                                     %Maximum carnot efficiency
+
+%% Record results in struc
+Results(p).Percentage = e;
+Results(p).Volume= V_ideal;
+Results(p).Pressure = p_ideal;
+Results(p).Temperature = T_ideal;
+Results(p).Entropy = s_ideal;
+Results(p).Work = W;
+Results(p).Heat = Q_in;
+Results(p).Efficiency = n_W;
+Results(p).Power = P;
+
+
+
+end
+
+
 
 
 %% Figures
 
+
 figure 
 hold on 
 set(gca,'FontSize',18) 
-title('Idealized Cycle')
+title('P-v Diagram for the ideal Cycle')
 xlabel('Volume [m^3]')
 ylabel('Pressure [bar]')
-xlim([0 inf])
+
+xlim([0 3e-4])
 ylim([0 inf])
+
 grid on
 
-plot(V_ideal,p_ideal.*1e-5)
+for p = 1:n_eth
+plot(Results(p).Volume,Results(p).Pressure.*1e-5)
+end
+
+legend(100*eth + "% Ethanol")
 
 hold off
 
-figure 
-semilogy(V_ideal,p_ideal)
-hold on 
+
+figure
+hold on
 set(gca,'FontSize',18) 
-title('Idealized Cycle')
-xlabel('Volume [m^3]')
-ylabel('Pressure [Pa]')
-
-xlim([0 inf])
-ylim([0 inf])
-
-grid on 
-
+title('Efficiency over Ethanol Percentage')
+xlabel('Ethanol (%)')
+ylabel('Thermal Efficiency (%)')
+ylim([0.4 0.7])
+plot([Results.Percentage], [Results.Efficiency])
 hold off
 
-figure 
-hold on 
-set(gca,'FontSize',18) 
-title('Idealized Cycle')
-xlabel('entropy [kJ/kgK]')
-ylabel('temperature [10^3 K]')
-xlim([0 inf])
-ylim([0 inf])
-grid on
-
-plot(s_ideal/1000,T_ideal/1000)
-
-hold off
 
 %% Functions
+
 
 function [Vcyl] = Vcyl(theta,B,r,L,V_c)
 %This function is used to calculate the volume of the cylinder 
