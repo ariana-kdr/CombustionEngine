@@ -409,7 +409,7 @@ Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
 %dmdt_fuel = (Power)/(Q_lhv*Eta);
 %dmdt = dmdt_fuel*(1+Y_reac(1)/Y_reac(3));
 
-dmdt_fuel = 750*0.66e-6;
+dmdt_fuel = 750*0.66e-6;                                                    %Multiplied by 750 (density gasoline)
 dmdt = dmdt_fuel*(1+(Y_reac(3)+Y_reac(6))/Y_reac(1));
 
 m_real(i) = (Pref*V_real(i))/(Tref*R_reac);
@@ -431,7 +431,7 @@ for t = [time_intake_stroke+dt:dt:time_compression]                         %Sta
         sj(j)= SNasa(T_real(i),Species(j));
     end
     s_real(i)= Y_reac*sj' - R_reac * (log(p_real(i))-log(Pref));
-    
+    dmdt = 0.0000002*(Pref-p_real(i-1));
     m_real(i) = m_real(i-1)+dt*dmdt;
 
     %Calculate thermal resistance depending on method selected
@@ -449,21 +449,6 @@ for t = [time_intake_stroke+dt:dt:time_compression]                         %Sta
     p_real(i)= (m_real(i)*R_reac*T_real(i))/(V_real(i));                    %Ideal Gas Law
     
 end
-
-
-figure 
-hold on 
-set(gca,'FontSize',18) 
-title('Test')
-xlabel('Volume [m^3]')
-ylabel('Pressure [bar]')
-xlim([0 inf])
-ylim([-inf inf])
-grid on
-
-plot(V_real(i),p_real.*1e-5)
-
-hold off
 
 P1 = p_real(i);
 V1 = V_real(i);
@@ -616,7 +601,7 @@ end
 k0 = (Y_prod*Cpj')/(Y_prod*Cvj');
 
 
-dmdt = (m_real(i)-m_real(1))/(t_end-time_valve_exhaust+dt);
+%dmdt = (m_real(i)-m_real(1))/(t_end-time_valve_exhaust+dt);
 
 for t = [time_valve_exhaust+dt:dt:t_end]
     i = i+1;
@@ -629,12 +614,14 @@ for t = [time_valve_exhaust+dt:dt:t_end]
     %kc = (Y_prod*Cpj')/(Y_prod*Cvj');
     Cv = Y_prod*Cvj';
     
-    
+    %dmdt = 160*m_real(i-1);
+    dmdt = 0.0000002*(p_real(i-1)-Pref);
     m_real(i) = m_real(i-1)-dt*dmdt;
     
     
     dTdt = -(alpha*Acyl(theta_crank(i-1),B,r,L))/(m_real(i-1)*Cv)*(T_real(i-1)-Tref)-(R_prod*T_real(i-1))/(V_real(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
     T_real(i)= T_real(i-1)+dt*dTdt;
+    
     
 
     p_real(i)= (m_real(i)*R_prod*T_real(i))/(V_real(i));                    %Ideal Gas Law
@@ -702,13 +689,33 @@ title('Comparison')
 xlabel('Volume [m^3]')
 ylabel('Pressure [bar]')
 xlim([0 inf])
-ylim([0 100])
+ylim([0 inf])
 grid on
 
 plot(V_ideal,p_ideal.*1e-5)
 plot(V_real,p_real.*1e-5)
+legend('Ideal cycle', 'Real cycle')
 
 hold off
+%{
+figure 
+
+semilogy(V_ideal,p_ideal.*e-5)
+hold on 
+semilogy(V_real,p_real.*e-5)
+
+set(gca,'FontSize',18) 
+title('Idealized Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [Pa]')
+
+xlim([0 inf])
+ylim([0 inf])
+
+grid on 
+
+hold off
+%}
 %{
 figure 
 hold on 
