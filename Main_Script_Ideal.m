@@ -2,12 +2,7 @@
 
 
 % Known Issues:
-% - Indexing in for loop is not perfect yet
-% - Since volume is a function of time ignition and valve exhaust are not
-% instantaneous
-% - Q_lhv behaves strangely when ethanol is added to the blend, and in
-% general it has to be reconsidered due to the signs in the code not
-% matching the signs in the slides 
+% T-s diagram needs to be fixed
 
 
 clear all;
