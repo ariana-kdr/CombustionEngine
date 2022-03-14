@@ -1,0 +1,67 @@
+clear variables;
+data = readtable('General/AnaMeDa_2022_group03.xlsx');
+
+%% EDA - Statistics 
+
+x = data.Dissolution;
+
+length = length(x); 
+min = min(x);
+max = max(x);
+range = range(x);
+mean = mean(x);
+median = median(x);
+std = std(x);
+var = var(x);
+iqr = iqr(x);
+
+%% EDA - Visulisation
+
+% Time sequence plot
+figure 
+hold on
+title('Time sequence plot')
+xlabel('Index');
+ylabel('Dissolution'); 
+grid on;
+plot(x,'.')
+hold off
+
+% Histogram (not super useful)
+figure
+hold on
+title('Histogram')
+xlabel('Dissolution');
+ylabel('Frequency'); 
+grid on;
+histogram(x)
+hold off
+
+% Density trace - different graphs obtained for different
+% bandwidths, so first verify that experimental data is correct
+figure
+hold on
+title('Density trace')
+xlabel('Dissolution');
+ylabel('Density'); 
+grid on;
+ksdensity(x)
+hold off
+
+% Boxplot
+figure
+hold on
+title('Boxplot')
+xlabel('Dissolution');
+ylim([63 82]);
+grid on;
+boxplot(x)
+hold off
+
+% density trace shows graph similar to normal distribution 
+% when no bandwidth set
+
+% boxplot shows fairly symmetric distrubtion excluding a few
+% outliers
+
+%% Probability Distribution
