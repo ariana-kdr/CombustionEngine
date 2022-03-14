@@ -1,21 +1,19 @@
 clear variables;
-data = readtable('General/AnaMeDa_2022_group03.xlsx');
-
-%% EDA - Statistics 
+data = readtable('AnaMeDa_2022_group03.xlsx');
+%% EDA - Statistics
 
 x = data.Dissolution;
 
-length = length(x); 
-min = min(x);
-max = max(x);
-range = range(x);
-mean = mean(x);
-median = median(x);
-std = std(x);
-var = var(x);
-iqr = iqr(x);
-
-%% EDA - Visulisation
+length_x = length(x); 
+min_x = min(x);
+max_x = max(x);
+range_x = range(x);
+mean_x = mean(x);
+median_x = median(x);
+std_x = std(x);
+var_x = var(x);
+iqr_x = iqr(x);
+%% EDA - Visualisation
 
 % Time sequence plot
 figure 
@@ -63,5 +61,19 @@ hold off
 
 % boxplot shows fairly symmetric distrubtion excluding a few
 % outliers
+%% Probability Distribution (68%)
 
-%% Probability Distribution
+% 68%-confidence interval
+Smean_x = std_x / (sqrt(length_x));
+
+%Computing Y
+y = x ./ (100-x);
+length_y = length(y);
+mean_y = mean(y);
+std_y = std(y);
+%Method 1 for 68%
+Smean_y = std_y / (sqrt(length_y));
+%Method 2 for 68%
+y_bar = mean_x ./ (100-mean_x);
+partial_yxmean = (100)/(100-mean_x)^2;
+Symean = (partial_yxmean * std_x);
