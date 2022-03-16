@@ -1,0 +1,70 @@
+clear all;close all;clc
+%% add general to matlab path 
+addpath('General');
+%%
+DataDir='C:\Users\20202832\Downloads\Training';  % The directory with the files. (Make sure you have backups!)
+ColumnOrder={'time','Encoder','Sensor'};
+%% Constants
+rpm = 3000; % RPM
+t_r = 60/rpm; % Period
+omega = (2*pi*rpm)/60; % Angular velocity
+%% Converting and Importing the Data
+Files=dir(fullfile(DataDir,'Spark Plug Test 3.txt'));
+nFiles=length(Files);                                                       % dir gives a directory listing, only *.txt files in this case
+h=waitbar(0,'Converting');
+for i=1:nFiles
+    waitbar(i/nFiles,h);
+    fname       = Files(i).name;                                            % Take a name from the list
+    curfilename = fullfile(DataDir,fname);                                  % Create the full name
+    comma2point_overwrite( curfilename);                                    % Convert comma to dot decimal separator, this is extremly fast!!
+end
+delete(h)
+
+for iFiles=1:nFiles
+    fname       = Files(iFiles).name;                                       % Take a name from the list
+    curfilename = fullfile(DataDir,fname);                                  % Create the full name
+    Data        = ImportData4GB10(curfilename,ColumnOrder);                 % Read the data. Type help ImportData4GB10
+    % store it for each case. Yes a struct that contains a struct and other
+    % things. Why not?
+    Case(iFiles).Data     = Data;
+    Case(iFiles).filename = fname;
+    Case(iFiles).DataDir  = DataDir;
+    % preamble, put data in easy to use arrays
+    t      = Data.t;    
+    p      = Data.pulse;
+    V      = Data.Volt;
+    RevEnd = Data.RevEnds;
+    V_s = 5; % Maximum voltage
+    P = ((V./V_s)-0.115)/0.00385; % Conversion from voltage to pressure
+    
+    % Input of mean values
+    sub = 60;
+    P = movmean(P,sub); % Remove noise
+    nCyc = (length(RevEnd - 1))/2; % Number of cycles
+        
+    % Input of amount of wanted cycles   
+    out = 10;
+    for i = 1:out
+        sub = nCyc-i;
+    end
+
+    figure()
+    hold on
+for iCyc = 1:nCyc-sub
+    Cycle_s = 2*iCyc; % Start of one cycle
+    Cycle_e = Cycle_s+2; % End of one cycle
+    
+    P_c = P(RevEnd(Cycle_s):RevEnd(Cycle_e)); % Pressure of the specific cycle(s)
+
+    [~,P_max(iCyc)] = max(P_c);
+    P_max_rel(iCyc) = P_max(iCyc)/length(P_c);
+    Ca = mean(P_max_rel) * 4 * pi;
+
+    V_c = V_cyl(Ca); % Volume using the function script
+    plot(P_c);
+    legend('Cycle 1','Cycle 2','Cycle 3','Cycle 4','Cycle 5','Cycle 6','Cycle 7','Cycle 8','Cycle 9','Cycle 10');
+    title('Pressure Diagram of Ignition Test 3');
+    xlabel('Index');
+    ylabel('Pressure [bar]');
+end
+end
