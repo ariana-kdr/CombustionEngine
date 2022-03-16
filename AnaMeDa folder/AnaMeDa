@@ -76,4 +76,29 @@ Smean_y = std_y / (sqrt(length_y));
 %Method 2 for 68%
 y_bar = mean_x ./ (100-mean_x);
 partial_yxmean = (100)/(100-mean_x)^2;
-Symean = (partial_yxmean * std_x);
+Smean_y2 = (partial_yxmean * Smean_x);
+
+%% Task 2
+
+Force = data.Force;
+CoatingViscosity = data.CoatingViscosity;
+TempInlet = data.TempInlet;
+TempExhaust = data.TempExhaust;
+SprayRate = data.SprayRate;
+Dissolution = data.Dissolution;
+
+corrF = corr([Force,Dissolution]); %No option
+corrV = corr([CoatingViscosity,Dissolution]); %Not terrible
+corrTi = corr([TempInlet,Dissolution]); %No option at all
+corrTe = corr([TempExhaust,Dissolution]); %No option
+corrS = corr([SprayRate,Dissolution]); %Best correlation
+
+figure
+hold on
+scatter(SprayRate,Dissolution);
+ylabel({'Dissolution fraction'});
+xlabel({'Spray rate'});
+title({'Scatter plot'});
+hold off
+
+Smean_spray = std(SprayRate) ./ sqrt(length_x);
