@@ -37,7 +37,7 @@ for iFiles=1:nFiles
     V      = Data.Volt;
     RevEnd = Data.RevEnds;
     V_s = 5; % Maximum voltage
-    P = ((V./V_s)-0.115)/0.00385; % Conversion from voltage to pressure
+    P = ((V./V_s)-0.115)/(0.00385*4); % Conversion from voltage to pressure
 
     % Input of mean values
     if contains(fname,'no') == true
