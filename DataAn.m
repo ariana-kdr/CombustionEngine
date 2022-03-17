@@ -1,14 +1,17 @@
 clear all;close all;clc
+%% add general to matlab path 
+addpath('General');
 %%
-DataDir='C:\Users\20202832\Downloads\Training';  % The directory with the files. (Make sure you have backups!)
+DataDir='C:\Users\20202832\Downloads\Training 2';  % The directory with the files. (Make sure you have backups!)
 ColumnOrder={'time','Encoder','Sensor'};
 %% Constants
 rpm = 3000; % RPM
 t_r = 60/rpm; % Period
 omega = (2*pi*rpm)/60; % Angular velocity
 %% Converting and Importing the Data
+Dim_grid = 3;                                                               % set size of subplot grid
 FDir= dir(DataDir); 
-Files = FDir(3:3+8,:);                                                 % remove '.' and '..', limit the amount of plots to 9
+Files = FDir(3:2+Dim_grid^2,:);                                                      % remove '.' and '..', limit the amount of plots to 9
 nFiles=length(Files);                                                       % dir gives a directory listing, only *.txt files in this case
 h=waitbar(0,'Converting');
 for i=1:nFiles
@@ -64,7 +67,7 @@ for iFiles=1:nFiles
 
     P_drift = P + (P_amb - Reg(1,:)) - Reg(2,:) * t;
 
-    subplot(3,3,iFiles)              %Create a 3x3 subplot
+    subplot(Dim_grid,Dim_grid,iFiles)              %Create a 3x3 subplot
     title(fname(1:end-4));
     xlabel('Volume [m^3]');
     ylabel('Pressure [bar]');
