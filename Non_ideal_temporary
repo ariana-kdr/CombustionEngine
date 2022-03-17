@@ -23,6 +23,7 @@ Runiv = 8.314472;                                                           %Uni
 Pref = 1.01235e5;                                                           %Reference Pressure (1atm) [Pa]
 Tref = 298.15;                                                              %Reference Temperature [K]
 
+loadf = input('Load factor for the engine: no-load = 0.25, half-load = 0.50, full-load = 0.75: ');
 % Implementing a mixture of fuels 
 Fuel1 = 'Gasoline';                                                          % Make fuel its own variable for easy changes
 Fuel2 = 'C2H5OH'; 
@@ -57,6 +58,13 @@ M_prod = X_prod*Mi';
 %Gas constants
 R_reac = Runiv/M_reac;
 R_prod = Runiv/M_prod;
+for j = 1:NSpecies
+    cv(j) = CvNasa(Tref,Species(j));                                            % Determine cv for T(i-1) for each element using Nasa
+    cp(j) = CpNasa(Tref,Species(j));                                            % Determine cp for T(i-1) for each element using Nasa
+end    
+Cp_0 = Y_reac*cp';
+Cv_0 = Y_reac*cv';
+gamma = Cp_0/Cv_0;                                          % calculating gamma before combustion
 
 %Dimensions (using dimensions found online)
 B = 68e-3;                                                                  %Bore [m]
@@ -132,7 +140,7 @@ time_exhaust_stroke = time(index_exhaust_stroke);
 i = 0;                                                                      %Index Value
 for t = [time_intake_stroke:dt:time_compression]                            %Start to end time
     i = i+1;
-    p_ideal(i) = Pref;                                                      %Isobaric
+    p_ideal(i) = Pref;                                                %Isobaric
     T_ideal(i) = Tref;                                                      %Isothermal
     
     %Calculate entropy
@@ -346,11 +354,11 @@ t_end = 2*(60/3000);                                                        %End
 time = [0:dt:t_end];                                                        %Time array [s]
 
 %Parameters 
-method_heat_coeff = 'Honenbe';                                              %Use either Woschni or Honenberg relation
+method_heat_coeff = 'Woschni';                                              %Use either Woschni or Honenberg relation
 t_w = 30e-3;                                                                %Estimate of thickness wall surrounding cylinder [m]
 k = 14.4;                                                                   %Conductive heat transfer coefficient [W/mK]
 ignition_offset = 25;                                                       %Degrees before TDC where ignition starts
-ignition_duration = 40;
+ignition_duration = 63;
 
 %Create vector array of crank angle and volume as a function of time
 i = 0;                                                                      %Index Value
@@ -412,7 +420,7 @@ Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
 dmdt_fuel = 750*0.66e-6;                                                    %Multiplied by 750 (density gasoline)
 dmdt = dmdt_fuel*(1+(Y_reac(3)+Y_reac(6))/Y_reac(1));
 
-m_real(i) = (Pref*V_real(i))/(Tref*R_reac);
+m_real(i) = (loadf*Pref*V_real(i))/(Tref*R_reac);
 p_real(i) = Pref;
 
 for t = [time_intake_stroke+dt:dt:time_compression]                         %Start to end time
@@ -641,6 +649,8 @@ Q45 = (Tref - T4)*Cv*m4;                                                    %Cac
 %% Real Exhaust Stroke
 %Still needs to be changed for real cycle
 
+eta = trapz(V_real,p_real)/(Q_lhv*m_f);
+eta_o = 1-(1/r_c)^(gamma(1)-1);
 %{
 for t = [time_exhaust_stroke+2*dt:dt:t_end]
     i = i+1;
@@ -675,7 +685,7 @@ title('Real Cycle')
 xlabel('Volume [m^3]')
 ylabel('Pressure [bar]')
 xlim([0 inf])
-ylim([-inf inf])
+ylim([-inf 50])
 grid on
 
 plot(V_real,p_real.*1e-5)
@@ -689,12 +699,14 @@ title('Comparison')
 xlabel('Volume [m^3]')
 ylabel('Pressure [bar]')
 xlim([0 inf])
-ylim([0 inf])
+ylim([-2 inf])
 grid on
 
 plot(V_ideal,p_ideal.*1e-5)
 plot(V_real,p_real.*1e-5)
 legend('Ideal cycle', 'Real cycle')
+xlim([0 inf])
+ylim([-2 inf])
 
 hold off
 %{
@@ -764,10 +776,10 @@ hold off
 function [Vcyl] = Vcyl(theta,B,r,L,V_c)
 %This function is used to calculate the volume of the cylinder 
 %   See lecture for derivation of formula
-    x = r*cos(theta)+sqrt(L^2-r^2*sin(theta)^2);                            %Distance from center of crankshaft to center of piston head [m]
+    x = r*cos(theta)+sqrt(L^2-r^2*sin(theta).^2);                            %Distance from center of crankshaft to center of piston head [m]
     d = L+r-x;                                                              %Distance of top of piston head to its maximum height [m]
 
-    Vcyl = pi/4*B^2*d+V_c;                                                  %Cylinder Volume [m^3]
+    Vcyl = pi*(B/2)^2*d + V_c;                                                  %Cylinder Volume [m^3]
 end
 
 function [Acyl] = Acyl(theta,B,r,L)
