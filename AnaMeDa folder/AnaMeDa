@@ -66,20 +66,22 @@ hold off
 % 68%-confidence interval
 Smean_x = std_x / (sqrt(length_x));
 
-%Computing Y
+%Computing Y (the dissolution ratio)
 y = x ./ (100-x);
 length_y = length(y);
 mean_y = mean(y);
 std_y = std(y);
+
 %Method 1 for 68%
 Smean_y = std_y / (sqrt(length_y));
+
 %Method 2 for 68%
 y_bar = mean_x ./ (100-mean_x);
 partial_yxmean = (100)/(100-mean_x)^2;
 Smean_y2 = (partial_yxmean * Smean_x);
 
 %% Task 2
-
+% EDA Task 2
 Force = data.Force;
 CoatingViscosity = data.CoatingViscosity;
 TempInlet = data.TempInlet;
@@ -101,4 +103,106 @@ xlabel({'Spray rate'});
 title({'Scatter plot'});
 hold off
 
+% Mean standard error for spray rate
 Smean_spray = std(SprayRate) ./ sqrt(length_x);
+
+%% Linear regression model 
+
+LinRegModel1=fitlm(SprayRate,Dissolution)
+
+% 95% confidence interval - does not contain value 0
+% therefore model params are important 
+conf_int1 = coefCI(LinRegModel1);
+
+% Regression model plot
+figure
+hold on
+plot(LinRegModel1);
+ylabel({'Dissolution fraction'});
+xlabel({'Spray rate'});
+title({'Fit'});
+grid on;
+hold off
+
+% Residuals plot
+figure
+hold on
+plotResiduals(LinRegModel1,'fitted')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Residuals versus Fitted Values'});
+grid on;
+hold off
+
+% Studentised residuals plot
+figure
+hold on
+plotResiduals(LinRegModel1,'fitted', 'ResidualType','Studentized')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Studentized Residuals versus Fitted Values'});
+grid on;
+hold off
+
+
+
+% this also validated by the fact that both the (absolute) values of the 
+% numbers in the tstat column are greater than 2 
+
+%% Quadratic Regression Model
+
+quaddata = table(SprayRate,Dissolution);
+QuadRegModel1 = fitlm(quaddata,'Dissolution~SprayRate+SprayRate^2')
+
+% Regression model plot
+figure
+hold on
+plot(QuadRegModel1);
+ylabel({'Dissolution fraction'});
+xlabel({'Spray rate'});
+title({'Fit'});
+grid on;
+hold off
+
+% Residuals plot
+figure
+hold on
+plotResiduals(QuadRegModel1,'fitted')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Residuals versus Fitted Values'});
+grid on;
+hold off
+
+% Studentised residuals plot
+figure
+hold on
+plotResiduals(QuadRegModel1,'fitted', 'ResidualType','Studentized')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Studentized Residuals versus Fitted Values'});
+grid on;
+hold off
+
+%% Task 3 
+% EDA task 3
+corrAll = corr([Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution]);
+% spray rate and dissolution still show the strongest correlation
+
+% force: strongest correlation with dissolution; weakest with spray rate
+% coating viscosity: strong - dissolution; weak - spray rate
+% temp inlet: strong - force; weak - spray rate
+% temp exhaust: strong - dissolution; weak - coating viscosity
+% spray rate: strong - dissolution; weak - coating viscosity
+% dissolution: strong - spray rate; weak - temp inlet
+
+
+%% Linear Regression Model
+newdata = table(Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution);
+
+LinRegModel2 = fitlm(newdata,'Dissolution~Force+CoatingViscosity+TempInlet+TempExhaust+SprayRate')
+% tstat has values > 2 only for Coating Viscosity and Spray Rate
+
+% 95% confidence interval
+% only TempInlet + Dissolution do not contain 0
+conf_int2 = coefCI(LinRegModel2);
