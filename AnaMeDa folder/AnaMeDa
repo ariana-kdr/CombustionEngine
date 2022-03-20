@@ -1,8 +1,8 @@
 clear variables;
-data = readtable('AnaMeDa_2022_group03.xlsx');
+data1 = readtable('AnaMeDa_2022_group03.xlsx');
 %% EDA - Statistics
 
-x = data.Dissolution;
+x = data1.Dissolution;
 
 length_x = length(x); 
 min_x = min(x);
@@ -82,12 +82,12 @@ Smean_y2 = (partial_yxmean * Smean_x);
 
 %% Task 2
 % EDA Task 2
-Force = data.Force;
-CoatingViscosity = data.CoatingViscosity;
-TempInlet = data.TempInlet;
-TempExhaust = data.TempExhaust;
-SprayRate = data.SprayRate;
-Dissolution = data.Dissolution;
+Force = data1.Force;
+CoatingViscosity = data1.CoatingViscosity;
+TempInlet = data1.TempInlet;
+TempExhaust = data1.TempExhaust;
+SprayRate = data1.SprayRate;
+Dissolution = data1.Dissolution;
 
 corrF = corr([Force,Dissolution]); %No option
 corrV = corr([CoatingViscosity,Dissolution]); %Not terrible
@@ -151,8 +151,8 @@ hold off
 
 %% Quadratic Regression Model
 
-quaddata = table(SprayRate,Dissolution);
-QuadRegModel1 = fitlm(quaddata,'Dissolution~SprayRate+SprayRate^2')
+data2 = table(SprayRate,Dissolution);
+QuadRegModel1 = fitlm(data2,'Dissolution~SprayRate+SprayRate^2');
 
 % Regression model plot
 figure
@@ -186,6 +186,8 @@ hold off
 
 %% Task 3 
 % EDA task 3
+
+% Finding the correlations between all of the different process variables
 corrAll = corr([Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution]);
 % spray rate and dissolution still show the strongest correlation
 
@@ -197,12 +199,92 @@ corrAll = corr([Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissoluti
 % dissolution: strong - spray rate; weak - temp inlet
 
 
-%% Linear Regression Model
-newdata = table(Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution);
+%% Linear Regression Model for all variables
+data3 = table(Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution);
 
-LinRegModel2 = fitlm(newdata,'Dissolution~Force+CoatingViscosity+TempInlet+TempExhaust+SprayRate')
+LinRegModel2 = fitlm(data3,['Dissolution~Force+CoatingViscosity+TempInlet' ...
+    '+TempExhaust+SprayRate'])
+
 % tstat has values > 2 only for Coating Viscosity and Spray Rate
 
 % 95% confidence interval
-% only TempInlet + Dissolution do not contain 0
-conf_int2 = coefCI(LinRegModel2);
+conf_int2 = coefCI(LinRegModel2)
+
+%% Residuals plots 
+
+% Normal probability of residuals plot
+figure
+hold on
+plotResiduals(LinRegModel2,'probability')
+xlabel({'Residuals'});
+ylabel({'Probability'});
+title({'Normal Probability Plot of Residuals'});
+grid on;
+hold off
+
+% Studentised residuals plot
+figure
+hold on
+plotResiduals(LinRegModel2,'fitted', 'ResidualType','Studentized')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Studentized Residuals versus Fitted Values'});
+grid on;
+hold off
+
+%% Linear Regression Model for coating viscosity, spray rate and dissolution
+
+LinRegModel3 = fitlm(data3,['Dissolution~CoatingViscosity+SprayRate'])
+
+% no zeroes
+conf_int3 = coefCI(LinRegModel3)
+
+% Normal probability of residuals plot
+
+figure
+hold on
+plotResiduals(LinRegModel3,'probability')
+xlabel({'Residuals'});
+ylabel({'Probability'});
+title({'Normal Probability Plot of Residuals'});
+grid on;
+hold off
+
+% Studentised residuals plot
+figure
+hold on
+plotResiduals(LinRegModel3,'fitted', 'ResidualType','Studentized')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Studentized Residuals versus Fitted Values'});
+grid on;
+hold off
+
+%% Linear Regression Model for coating viscosity, spray rate and dissolution
+... with interaction
+
+LinRegModel4 = fitlm(data3,['Dissolution~CoatingViscosity*SprayRate'])
+
+% no zeroes
+conf_int4 = coefCI(LinRegModel4)
+
+% Normal probability of residuals plot
+
+figure
+hold on
+plotResiduals(LinRegModel4,'probability')
+xlabel({'Residuals'});
+ylabel({'Probability'});
+title({'Normal Probability Plot of Residuals'});
+grid on;
+hold off
+
+% Studentised residuals plot
+figure
+hold on
+plotResiduals(LinRegModel4,'fitted', 'ResidualType','Studentized')
+xlabel({'Fitted Values'});
+ylabel({'Residuals'});
+title({'Studentized Residuals versus Fitted Values'});
+grid on;
+hold off
