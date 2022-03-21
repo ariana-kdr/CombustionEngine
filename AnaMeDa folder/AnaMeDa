@@ -79,9 +79,9 @@ Smean_y = std_y / (sqrt(length_y));
 y_bar = mean_x ./ (100-mean_x);
 partial_yxmean = (100)/(100-mean_x)^2;
 Smean_y2 = (partial_yxmean * Smean_x);
-
 %% Task 2
 % EDA Task 2
+
 Force = data1.Force;
 CoatingViscosity = data1.CoatingViscosity;
 TempInlet = data1.TempInlet;
@@ -103,10 +103,17 @@ xlabel({'Spray rate'});
 title({'Scatter plot'});
 hold off
 
+figure
+hold on
+scatter(CoatingViscosity,Dissolution);
+ylabel({'Dissolution fraction'});
+xlabel({'Coating viscosity'});
+title({'Scatter plot'});
+hold off
+
 % Mean standard error for spray rate
 Smean_spray = std(SprayRate) ./ sqrt(length_x);
-
-%% Linear regression model 
+%% Linear regression model
 
 LinRegModel1=fitlm(SprayRate,Dissolution)
 
@@ -147,8 +154,7 @@ hold off
 
 
 % this also validated by the fact that both the (absolute) values of the 
-% numbers in the tstat column are greater than 2 
-
+% numbers in the tstat column are greater than 2
 %% Quadratic Regression Model
 
 data2 = table(SprayRate,Dissolution);
@@ -183,8 +189,7 @@ ylabel({'Residuals'});
 title({'Studentized Residuals versus Fitted Values'});
 grid on;
 hold off
-
-%% Task 3 
+%% Task 3
 % EDA task 3
 
 % Finding the correlations between all of the different process variables
@@ -197,9 +202,8 @@ corrAll = corr([Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissoluti
 % temp exhaust: strong - dissolution; weak - coating viscosity
 % spray rate: strong - dissolution; weak - coating viscosity
 % dissolution: strong - spray rate; weak - temp inlet
-
-
 %% Linear Regression Model for all variables
+
 data3 = table(Force,CoatingViscosity,TempInlet,TempExhaust,SprayRate,Dissolution);
 
 LinRegModel2 = fitlm(data3,['Dissolution~Force+CoatingViscosity+TempInlet' ...
@@ -209,8 +213,7 @@ LinRegModel2 = fitlm(data3,['Dissolution~Force+CoatingViscosity+TempInlet' ...
 
 % 95% confidence interval
 conf_int2 = coefCI(LinRegModel2)
-
-%% Residuals plots 
+%% Residuals plots
 
 % Normal probability of residuals plot
 figure
@@ -231,7 +234,6 @@ ylabel({'Residuals'});
 title({'Studentized Residuals versus Fitted Values'});
 grid on;
 hold off
-
 %% Linear Regression Model for coating viscosity, spray rate and dissolution
 
 LinRegModel3 = fitlm(data3,['Dissolution~CoatingViscosity+SprayRate'])
@@ -259,8 +261,8 @@ ylabel({'Residuals'});
 title({'Studentized Residuals versus Fitted Values'});
 grid on;
 hold off
-
 %% Linear Regression Model for coating viscosity, spray rate and dissolution
+
 ... with interaction
 
 LinRegModel4 = fitlm(data3,['Dissolution~CoatingViscosity*SprayRate'])
