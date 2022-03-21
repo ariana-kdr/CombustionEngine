@@ -2,7 +2,7 @@ clear all;close all;clc
 %% add general to matlab path 
 addpath('General');
 %%
-DataDir='C:\Users\20202832\Downloads\Training 2';  % The directory with the files. (Make sure you have backups!)
+DataDir='C:\Users\20192807\Desktop\Combustion\Triaining\matlab\Data\Second attempt';  % The directory with the files. (Make sure you have backups!)
 ColumnOrder={'time','Encoder','Sensor'};
 %% Constants
 rpm = 3000; % RPM
@@ -41,21 +41,21 @@ for iFiles=1:nFiles
 
     % Input of mean values
     if contains(fname,'no') == true
-        sub = 75;
+        Q = 75;
     elseif contains(fname,'half') == true
-        sub = 60;
+        Q = 60;
     elseif contains(fname,'full') == true
-        sub = 50;
+        Q = 50;
     else
-        sub = 60;
+        Q = 60;
     end
-    P = movmean(P,sub); % Remove noise
+    P = movmean(P,Q); % Remove noise
     nCyc = (length(RevEnd) - 1)/2; % Number of cycles
 
     % Input of amount of wanted cycles
     out = 10;
     for i = 1:out
-        sub = nCyc-i;
+        Q = nCyc-i;
     end
 
     %Drift correction
@@ -73,7 +73,7 @@ for iFiles=1:nFiles
     ylabel('Pressure [bar]');
     %legend('Cycle 1','Cycle 2','Cycle 3','Cycle 4','Cycle 5','Cycle 6','Cycle 7','Cycle 8','Cycle 9','Cycle 10');
     hold on
-    for iCyc = 1:nCyc-sub
+    for iCyc = 1:nCyc-Q
         Cycle_s = 2*iCyc; % Start of one cycle
         Cycle_e = Cycle_s+2; % End of one cycle
 
@@ -91,8 +91,26 @@ for iFiles=1:nFiles
         V_c = V_cyl(Ca); % Volume using the function script
         plot(V_c,P_c);
         
-        W_index = cumtrapz(V_c,P_c);
-        W = W_index(end)*10^5;
+        W = trapz(V_c,P_c)*10^5;
+        Q_lhv = [4.2894e7 4.3525e7 4.4227e7 4.5012e7];
+    if contains(fname,'0 eth') == true
+        Q = Q_lhv(1,1);
+    elseif contains(fname,'5 eth') == true
+        Q = Q_lhv(1,2);
+    elseif contains(fname,'10 eth') == true
+        Q = Q_lhv(1,3);
+    elseif contains(fname,'15 eth') == true
+        Q = Q_lhv(1,4);
+    end
+    m_dot = importdata('C:\Users\20192807\Desktop\Combustion\Triaining\matlab\Data\massflow.txt');
+    if contains(fname,'no') == true
+        m_flow = m_dot(:,1);  % No load flows
+    elseif contains(fname,'half') == true
+        m_flow = m_dot(:,2);
+    elseif contains(fname,'full') == true
+        m_flow = m_dot(:,3);
+    end
+    eta = W./(Q_lhv*m_flow);
     end
     
 end
