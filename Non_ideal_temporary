@@ -30,8 +30,18 @@ Fuel2 = 'C2H5OH';
 Species = Sp(myfind({Sp.Name},{Fuel1, Fuel2,'O2','CO2','H2O','N2'}));               % Subselection of species in database
 NSpecies = length(Species);                                                 % Create variable for length of Species array for later use 
 Mi = [Species.Mass];                                                        % Array of molecular masses for each component
+Mi2 = [106.4,46.1,32,44,18,28];
+rho_g = 748.9;                                                            % density gasoline [kg/m^3]
+rho_e = 789;                                                              % density ethanol [kg/m^3]
 
-e = 0.05;                                                                    % ethanol fraction in gasoline; can vary between 0 and 1.0
+e = 0.15;                                                                    % ethanol fraction in gasoline; can vary between 0 and 1.0
+
+V_a = [0 0 0.21 0 0 0.79];
+V_g = 1-e;
+V_e = e;
+
+Y_f = ([(V_g*rho_g) (V_e*rho_e) 0 0 0 0])/...            %mass fraction fuel
+    (sum([(V_g*rho_g) (V_e*rho_e) 0 0 0 0]));
 
 x = (1 - e)*Species(1).Elcomp(3) + e*Species(2).Elcomp(3);                  % Summing the moles of given ethanol/gasoline ratio for carbon
 y = (1 - e)*Species(1).Elcomp(2) + e*Species(2).Elcomp(2);                  % Summing the moles of given ethanol/gasoline ratio for hydrogen
@@ -46,14 +56,20 @@ N_prod = [0 0 0 x y/2 a*3.76];
 % Mole Fractions using balanced chemical equation
 X_reac = N_reac/sum(N_reac);
 X_prod = N_prod/sum(N_prod);
+X_fuel = (Y_f./Mi2)/sum(Y_f./Mi2);                              %molar fractions fuel mixture
 
 %Convert to mass fractions
-Y_reac = (X_reac.*Mi)/(X_reac*Mi');
-Y_prod = (X_prod.*Mi)/(X_prod*Mi');
+Y_reac = (X_reac.*Mi2)/(X_reac*Mi2');
+Y_prod = (X_prod.*Mi2)/(X_prod*Mi2');
+
+%CO2 info
+c_g = Species(1).Elcomp(3);                                                         %number of carbon atoms in gasoline
+c_e = Species(2).Elcomp(3);                                                         %number of carbon atoms in ethanol
+m_co2 = X_fuel(1)*c_g+X_fuel(2)*c_g;                              % Mole of CO2 in combustion reaction
 
 %Molar mass
-M_reac = X_reac*Mi';
-M_prod = X_prod*Mi';
+M_reac = X_reac*Mi2';
+M_prod = X_prod*Mi2';
 
 %Gas constants
 R_reac = Runiv/M_reac;
@@ -414,12 +430,6 @@ end
 %                                                                             %Found to be 4.3416e6 [J/kg] online for gasoline
 Q_lhv = Y_reac/(Y_reac(1))*h_0' - Y_prod/(Y_reac(1))*h_0';
 
-%dmdt_fuel = (Power)/(Q_lhv*Eta);
-%dmdt = dmdt_fuel*(1+Y_reac(1)/Y_reac(3));
-
-dmdt_fuel = 750*0.66e-6;                                                    %Multiplied by 750 (density gasoline)
-dmdt = dmdt_fuel*(1+(Y_reac(3)+Y_reac(6))/Y_reac(1));
-
 m_real(i) = (loadf*Pref*V_real(i))/(Tref*R_reac);
 p_real(i) = Pref;
 
@@ -525,7 +535,13 @@ for t = [time_ignition+dt:dt:time_expansion]
     R = (1-Wiebe(n,a,theta_crank(i-1),theta_s,theta_d))*R_reac+Wiebe(n,a,theta_crank(i-1),theta_s,theta_d)*R_prod;
 
     m_real(i) = m_real(i-1);                                                %Mass stays constant since valves are closed
-    m_f = Y_reac(1)*m_real(i);                                              %Mass of fuel using mass composition [kg]
+    m_gas = Y_reac(1)*m_real(i);
+    m_eth = Y_reac(2)*m_real(i);
+    m_f = m_gas+m_eth;
+    
+    fuel_e = m_co2/(m_f*1000);
+    
+    %m_f = Y_reac(1)*m_real(i);                                              %Mass of fuel using mass composition [kg]
 
      %Calculate thermal resistance depending on method selected
     if method_heat_coeff == 'Woschni'
