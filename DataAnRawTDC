@@ -1,0 +1,51 @@
+%% DataAnRaw
+% Remember to change ImportData4GB10!
+% 
+% Change line 33 to "id              = find(apks > 0.4*mean(apks));"!
+
+clear all;close all;clc
+%% Add general to matlab path
+
+addpath('General');
+%%
+DataDir='C:\Users\20202587\Documents\TU Eindhoven\Jaar 2\4GB10 Combustion Engine\Experiment 2\Second attempt\Training 2';  % The directory with the files. (Make sure you have backups!)
+ColumnOrder={'time','Encoder','Sensor'};
+%% Converting and Importing the Data
+
+FDir= dir(DataDir);                                                  % remove '.' and '..', limit the amount of plots to 9
+Files = FDir(41:41,:); %Only reads TDC3 now
+nFiles=length(Files);                                                       % dir gives a directory listing, only *.txt files in this case
+h=waitbar(0,'Converting');
+for i=1:nFiles
+    waitbar(i/nFiles,h);
+    fname       = Files(i).name;                                            % Take a name from the list
+    curfilename = fullfile(DataDir,fname);                                  % Create the full name
+    %comma2point_overwrite(curfilename);                                    % Convert comma to dot decimal separator, this is extremly fast!!
+end
+delete(h)
+
+for iFiles=1:nFiles
+    fname       = Files(iFiles).name;                                       % Take a name from the list
+    curfilename = fullfile(DataDir,fname);                                  % Create the full name
+    Data        = ImportData4GB10(curfilename,ColumnOrder);                 % Read the data. Type help ImportData4GB10
+    % store it for each case. Yes a struct that contains a struct and other
+    % things. Why not?
+    Case(iFiles).Data     = Data;
+    Case(iFiles).filename = fname;
+    Case(iFiles).DataDir  = DataDir;
+    % preamble, put data in easy to use arrays
+    t      = Data.t;
+    p      = Data.pulse;
+    V      = Data.Volt;
+    RevEnd = Data.RevEnds;
+    V_s = 5; % Maximum voltage
+    P = ((V./V_s)-0.115)/(0.00385*4); % Conversion from voltage to pressure
+    
+    P = movmean(P,50); %Filter for the pressure
+
+    hold on
+    plot(t,P)
+    plot(t,p)
+    %These plots, combined with the 3 RevEnds, should give the acquired
+    %offset.
+end
