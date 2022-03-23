@@ -1,16 +1,20 @@
 clear all;close all;clc
-%% add general to matlab path 
+%% add general to matlab path
+
 addpath('General');
 %%
-DataDir='C:\Users\20192807\Desktop\Combustion\Triaining\matlab\Data\Second attempt';  % The directory with the files. (Make sure you have backups!)
+DataDir='C:\Users\20202587\Documents\TU Eindhoven\Jaar 2\4GB10 Combustion Engine\Experiment 2\Second attempt\Training 2';  % The directory with the files. (Make sure you have backups!)
 ColumnOrder={'time','Encoder','Sensor'};
 %% Constants
+
 rpm = 3000; % RPM
 t_r = 60/rpm; % Period
 omega = (2*pi*rpm)/60; % Angular velocity
 %% Converting and Importing the Data
+
 Dim_grid = 3;                                                               % set size of subplot grid
 FDir= dir(DataDir); 
+%%Files = FDir(4:4,:);
 Files = FDir(3:2+Dim_grid^2,:);                                                      % remove '.' and '..', limit the amount of plots to 9
 nFiles=length(Files);                                                       % dir gives a directory listing, only *.txt files in this case
 h=waitbar(0,'Converting');
@@ -60,7 +64,8 @@ for iFiles=1:nFiles
 
     %Drift correction
     P_amb = 1.012;                                                          %Ambient pressure according to wheather report
-    Ca_off = 1.4779;                                                        %Crank angle offset found according to ignition
+    %%Ca_off = 1.4779;                                                        %Crank angle offset found according to ignition
+    Ca_off = 1.445; %New TDC
     P_exh = P(RevEnd - round(Ca_off/(4 * pi)*mean(diff(RevEnd))));          %Exhaust pressure at end of exhaust
     T_exh = [ones(length(t(RevEnd)),1) t(RevEnd)];
     Reg = T_exh\P_exh;                                                      %Regression between pressure and time
@@ -90,8 +95,22 @@ for iFiles=1:nFiles
 
         V_c = V_cyl(Ca); % Volume using the function script
         plot(V_c,P_c);
-        
-        W = trapz(V_c,P_c)*10^5;
+    end
+end
+
+%%
+%% Work, Power & Efficiency Calculations
+%W_index = (cumtrapz(V_ci_total, P_ci_total));                                        %Index of work done throughout cycle [J]
+%W = W_index(end);                                                           %Total work done per cyycle [J]
+
+W_total = V_ci_total .* P_ci_total;
+W_sum = sum(W_total(2:end,:));
+
+P = W_sum*3000/60;                                                                    %Power of engine [W]
+
+return
+
+        %W = trapz(V_c,P_c)*10^5;
         Q_lhv = [4.2894e7 4.3525e7 4.4227e7 4.5012e7];
     if contains(fname,'0 eth') == true
         Q = Q_lhv(1,1);
@@ -111,6 +130,3 @@ for iFiles=1:nFiles
         m_flow = m_dot(:,3);
     end
     eta = W./(Q_lhv*m_flow);
-    end
-    
-end
