@@ -12,11 +12,14 @@ t_r = 60/rpm; % Period
 omega = (2*pi*rpm)/60; % Angular velocity
 %% Converting and Importing the Data
 
-P_length = 0;
-Dim_grid = 3;                                                               % set size of subplot grid
 FDir= dir(DataDir); 
-for iTest=0:2
-    Files = FDir(3+iTest*3:5+iTest*3,:);
+FinalIndex = 0;
+for iTest=1:3:34
+%for iTest=1:3:8
+    clearvars -except iTest DataDir ColumnOrder rpm t_r omega FDir FinalIndex Experiment_Data
+    P_length = 0;
+    FinalIndex = FinalIndex+1;
+    Files = FDir(2+iTest:3+iTest,:);
     %Files = FDir(3:5,:);
     %%Files = FDir(3:2+Dim_grid^2,:);                                                      % remove '.' and '..', limit the amount of plots to 9
     nFiles=length(Files);                                                       % dir gives a directory listing, only *.txt files in this case
@@ -99,8 +102,8 @@ for iFiles=1:nFiles
 
         Ca = omega_m*t_c - Ca_off;                       % Crank angle
 
-        [~,P_max(iCyc)] = max(P(RevEnd(Cycle_s):RevEnd(Cycle_e)));
-        P_max_rel(iCyc) = P_max(iCyc)/length(P(RevEnd(Cycle_s):RevEnd(Cycle_e)));
+        %[~,P_max(iCyc)] = max(P(RevEnd(Cycle_s):RevEnd(Cycle_e)));
+        %P_max_rel(iCyc) = P_max(iCyc)/length(P(RevEnd(Cycle_s):RevEnd(Cycle_e)));
 
         V_c = V_cyl(Ca); % Volume using the function script
 
@@ -135,7 +138,7 @@ for iFiles=1:nFiles
 end
 
 %Finding the average length of the mean cycles
-P_l_average = P_length/3;
+P_l_average = P_length/2;
 
 %Finding the mean cycle of the mean cycle
 for iFiles=1:nFiles
@@ -145,61 +148,113 @@ for iFiles=1:nFiles
         V_ci_mat(i,iFiles) = interp1(Case(iFiles).Data.V_ci,idx,'nearest');
     end 
 end    
+
+% for i = 1:P_l_average
+%         idx = i/P_l_average * (length(Case(iFiles).Data.P_ci)-1);
+%         P_ci_mat(i,iFiles) = interp1(Case(iFiles).Data.P_ci,idx,'nearest');
+%         V_ci_mat(i,iFiles) = interp1(Case(iFiles).Data.V_ci,idx,'nearest');
+% end 
+
 V_ci_total = mean(V_ci_mat,2);
 P_ci_total = mean(P_ci_mat,2);
 
-%     figure
-%       hold on
-%     title("Final mean cycle for x% ethanol x load");
-%     xlabel('Volume [m^3]');
-%     ylabel('Pressure [bar]');
-% plot(V_ci_total, P_ci_total)
+%Code used to export cycles
 
- %Code used to export cycles
-data_temp = [] ;
+data_temp = [];
 data_temp(:,1) = P_ci_total;
 data_temp(:,2) = V_ci_total;
-  
-writematrix(data_temp, fname);
+data_temp = data_temp(2:end,:);
 
+    % Getting interpolation constant
+    if contains(fname,'no') == true
+        Q = 0.5*10^-4;
+    elseif contains(fname,'half') == true
+        Q = 0.5*10^-5;
+    elseif contains(fname,'full') == true
+        Q = 0.5*10^-4;
+    else
+        Q = 10^-5;
+    end
+
+datasample = [data_temp(1,:);data_temp(end,:)];
+if datasample(1,1)>datasample(end,1)
+    data_temp2(:,1) = (datasample(end,1):Q:datasample(1,1))';
+else
+data_temp2(:,1) = (datasample(1,1):Q:datasample(end,1))';
 end
 
+data_temp2(:,2) = interp1(datasample(:,1),datasample(:,2),data_temp2(:,1));
 
-%%
-%% Work, Power & Efficiency Calculations
+data_final = [data_temp;data_temp2];
 
-V_y = V_ci_total(2:end,:);
-P_y = P_ci_total(2:end,:)*10^5;
+%writematrix(data_final, fname);
 
-W = trapz(V_y,P_y)*10^5;
+%Removing noise for seperate dataset
+    if contains(fname,'no') == true
+        Q = 45;
+    elseif contains(fname,'half') == true
+        Q = 30;
+    elseif contains(fname,'full') == true
+        Q = 20;
+    else
+        Q = 40;
+    end
+    P_filtered = movmean(data_final(:,1),Q); % Remove noise
 
-%W_index = (cumtrapz(V_ci_total, P_ci_total));                                        %Index of work done throughout cycle [J]
-%W = W_index(end);                                                           %Total work done per cyycle [J]
+%     figure
+%       hold on
+%     title("Final mean cycle for 0% ethanol full load");
+%     xlabel('Volume [m^3]');
+%     ylabel('Pressure [bar]');
+% plot(data_final(:,2), P_filtered)
 
-% W_total = V_ci_total .* P_ci_total;
-% W_sum = sum(W_total(2:end,:));
-
+%Work, power and efficiency calculations
+W = 1/2*trapz(data_final(:,2),data_final(:,1))*10^5; %Work in Joule
 P = W*3000/60;                                                                    %Power of engine [W]
 
-return
-
-        
-        Q_lhv = [4.2894e7 4.3525e7 4.4227e7 4.5012e7];
+   Q_lhv = [4.2894e7 4.3525e7 4.4227e7 4.5012e7];
     if contains(fname,'0 eth') == true
-        Q = Q_lhv(1,1);
+        x = 1;
     elseif contains(fname,'5 eth') == true
-        Q = Q_lhv(1,2);
+        x = 2;
     elseif contains(fname,'10 eth') == true
-        Q = Q_lhv(1,3);
+        x = 3;
     elseif contains(fname,'15 eth') == true
-        Q = Q_lhv(1,4);
+        x = 4;
     end
-    m_dot = importdata('C:\Users\20192807\Desktop\Combustion\Triaining\matlab\Data\massflow.txt');
+Q = Q_lhv(1,x);    
+    
+m_dot = importdata('C:\Users\20202587\Documents\TU Eindhoven\Jaar 2\4GB10 Combustion Engine\Experiment 2\massflow_mean.txt');
+m_dot_max = importdata('C:\Users\20202587\Documents\TU Eindhoven\Jaar 2\4GB10 Combustion Engine\Experiment 2\massflow_max.txt');
+m_dot_min = importdata('C:\Users\20202587\Documents\TU Eindhoven\Jaar 2\4GB10 Combustion Engine\Experiment 2\massflow_min.txt');
     if contains(fname,'no') == true
-        m_flow = m_dot(:,1);  % No load flows
+        m_flow = m_dot(x,1);  % No load flows
+        m_flow_max = m_dot_max(x,1);
+        m_flow_min = m_dot_min(x,1);
     elseif contains(fname,'half') == true
-        m_flow = m_dot(:,2);
+        m_flow = m_dot(x,2);
+        m_flow_max = m_dot_max(x,2);
+        m_flow_min = m_dot_min(x,2);
     elseif contains(fname,'full') == true
-        m_flow = m_dot(:,3);
+        m_flow = m_dot(x,3);
+        m_flow_max = m_dot_max(x,3);
+        m_flow_min = m_dot_min(x,3);
     end
-    eta = W./(Q_lhv*m_flow);
+
+    
+eta = P/(Q*m_flow*10^-3) * 100; %Efficiency in %
+eta_min = P/(Q*m_flow_max*10^-3) * 100; %Minimum efficiency in %
+eta_max = P/(Q*m_flow_min*10^-3) * 100; %Maximum efficiency in %
+
+Experiment_Data(FinalIndex).Index = FinalIndex;
+Experiment_Data(FinalIndex).Name = fname(1:end-6);
+Experiment_Data(FinalIndex).Pressure = data_final(:,1);
+Experiment_Data(FinalIndex).Volume = data_final(:,2);
+Experiment_Data(FinalIndex).Pressure_filtered = P_filtered;
+Experiment_Data(FinalIndex).Work = W;
+Experiment_Data(FinalIndex).Power = P;
+Experiment_Data(FinalIndex).Efficiency = eta; %In percent!
+Experiment_Data(FinalIndex).EfficiencyMin = eta_min; %In percent!
+Experiment_Data(FinalIndex).EfficiencyMax = eta_max; %In percent!
+
+end
