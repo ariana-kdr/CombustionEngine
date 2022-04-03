@@ -11,9 +11,10 @@ addpath('General/Nasa');
 TdataBase = fullfile('General/Nasa','NasaThermalDatabase.mat');
 load(TdataBase);
 
-%Load Experimental Data
-%Data_experiment = fullfile('data_experiment.mat');
-
+%Load Parameters
+Load_Parameters = fullfile('Load_Parameters.mat');
+load(Load_Parameters)
+%%
 % Constants 
 global Runiv Pref Tref                                                      %Set global variables (so they cannot be changed)
 Runiv = 8.314472;                                                           %Universal Gas Constant[J/K*mol]
@@ -28,10 +29,10 @@ NSpecies = length(Species);                                                 % Cr
 Mi = [Species.Mass];                                                        % Array of molecular masses for each component
 
 %Dimensions (using dimensions found online)
-B = 68e-3;                                                                  %Bore [m]
-r = 27e-3;                                                                  %Radius of crank shaft [m]
-S = 54e-3;                                                                  %Stroke [m]
-L = 84.7e-3;                                                                %Length of rod [m]
+B = 0.06735;                                                                  %Bore [m]
+S = 0.05365;                                                                  %Stroke [m]
+r = S/2;                                                                    %Radius of crank shaft [m]
+L = 0.0847;                                                                %Length of rod [m]
 r_c = 8.5;                                                                  %Compression Ratio [m]
 V_d = pi/4*B^2*S;                                                           %Displacement Volume [m^3]
 V_c = V_d/(r_c-1);                                                          %Clearance volume [m^3]
@@ -51,19 +52,19 @@ Q_in_real = zeros(1,steps);                                                 %Tot
 
 %Create struct to combine all the results of the model
 
-eth = [0,0.05,0.10,0.15];                                  % ethanol fractions (can be any string of numbers between 0 and 1)
+%eth = [0,0.05,0.10,0.15];                                  % ethanol fractions (can be any string of numbers between 0 and 1)
 eth = [0];
 load = ["NoLoad","HalfLoad","FullLoad"];
 n_eth = length(eth);                                                        % number of ethanol blends considered
 
-struct_eth = struct('Blend',[],'Percentage', [], 'Volume',[],'Pressure',[],'Temperature',[],'Entropy',[],'Work',[],'Heat',[], 'Efficiency', [], 'Power', [], 'theta_d', [], 'n', [],'a', [], 'beta_intake', [],'beta_exhaust', [], 'R2', []); 
-
+struct_eth = struct('Blend',[],'Percentage', [], 'Volume',[],'Pressure',[],'Temperature',[],'Mass', [],'Entropy',[],'Work',[],'Heat',[], 'Efficiency', [], 'Power', []); 
 Results = struct('NoLoad', struct_eth, 'HalfLoad', struct_eth, 'FullLoad', struct_eth);
 
 for l = 1:length(load)
     for t = 1:n_eth
     Results.(load(l))(t).Blend = 100*eth(t) + "% ethanol";
     end
+    Parameters(l).Load = load(l);
 end
                                                       
 %Time Values
@@ -77,7 +78,7 @@ method_heat_coeff = 'Honenbe';                                              %Use
 t_w = 30e-3;                                                                %Estimate of thickness wall surrounding cylinder [m]
 k = 14.4;                                                                   %Conductive heat transfer coefficient [W/mK]
 ignition_offset = 25;                                                       %Degrees before TDC where ignition starts
-ignition_duration = 40;
+
 
 %Create vector array of crank angle and volume as a function of time
 i = 0;                                                                      %Index Value
@@ -88,35 +89,16 @@ for t = [0:dt:t_end]
 end
 theta_crank_degrees = theta_crank.*(180/pi);                                %Convert crank angle to degrees for easy life
 
-%Set the angle for the start position of each of the stages
-theta_intake_stroke = 0;
-theta_compression = 240;
-theta_ignition = 360-ignition_offset;                                       
-theta_expansion = theta_ignition+ignition_duration;
-theta_valve_exhaust = 480;
-theta_exhaust_stroke = 540;
-
-%Find the index in the crank angle vector array for which it is at this
-%angle
-index_intake_stroke = max(find(theta_crank_degrees==theta_intake_stroke));
-%Since angle is never perfectly 180 take max index where it is lower and
-%add one (cheap workaround)
-index_compression = max(find(theta_crank_degrees<theta_compression))+1;
-index_ignition = max(find(theta_crank_degrees<theta_ignition))+1;
-index_expansion = max(find(theta_crank_degrees<theta_expansion))+1;
-index_valve_exhaust = max(find(theta_crank_degrees<theta_valve_exhaust))+1;
-index_exhaust_stroke = max(find(theta_crank_degrees<theta_exhaust_stroke))+1;
-
-%Find the time instant for each start of the strokes
-time_intake_stroke = time(index_intake_stroke);
-time_compression = time(index_compression);
-time_ignition = time(index_ignition);
-time_expansion = time(index_expansion);
-time_valve_exhaust = time(index_valve_exhaust);
-time_exhaust_stroke = time(index_exhaust_stroke);
+%% Loop
 
 for l = 1:length(load)    
 p = 0;
+
+%Load in parameters from struct depending on load
+ignition_duration = Load_Parameters(l).Ignition_duration;
+beta_intake = Load_Parameters(l).Beta_intake;
+beta_exhaust = Load_Parameters(l).Beta_exhaust;
+
 for e = eth
 p = p + 1;
 
@@ -146,6 +128,34 @@ M_prod = X_prod*Mi';
 %Gas constants
 R_reac = Runiv/M_reac;
 R_prod = Runiv/M_prod;
+
+
+%Set the angle for the start position of each of the stages
+theta_intake_stroke = 0;
+theta_compression = 240;
+theta_ignition = 360-ignition_offset;                                       
+theta_expansion = theta_ignition+ignition_duration;
+theta_valve_exhaust = 530;
+theta_exhaust_stroke = 540;
+
+%Find the index in the crank angle vector array for which it is at this
+%angle
+index_intake_stroke = max(find(theta_crank_degrees==theta_intake_stroke));
+%Since angle is never perfectly 180 take max index where it is lower and
+%add one (cheap workaround)
+index_compression = max(find(theta_crank_degrees<theta_compression))+1;
+index_ignition = max(find(theta_crank_degrees<theta_ignition))+1;
+index_expansion = max(find(theta_crank_degrees<theta_expansion))+1;
+index_valve_exhaust = max(find(theta_crank_degrees<theta_valve_exhaust))+1;
+index_exhaust_stroke = max(find(theta_crank_degrees<theta_exhaust_stroke))+1;
+
+%Find the time instant for each start of the strokes
+time_intake_stroke = time(index_intake_stroke);
+time_compression = time(index_compression);
+time_ignition = time(index_ignition);
+time_expansion = time(index_expansion);
+time_valve_exhaust = time(index_valve_exhaust);
+time_exhaust_stroke = time(index_exhaust_stroke);
 
 %% Real Intake Stroke
 %Still the same as ideal, have to add negative work
@@ -177,10 +187,10 @@ for t = [time_intake_stroke+dt:dt:time_compression]                         %Sta
     end
     s_real(i)= Y_reac*sj' - R_reac * (log(p_real(i))-log(Pref));
     
-    beta_intake = 1e-4;
+    %beta_intake = 0.000005;
     
     dmdt = beta_intake*(Pref-p_real(i-1))^(0.5);
-    m_real(i) = m_real(i-1)+dt*dmdt;
+    m_real(i) = m_real(i-1)+dt*real(dmdt);
 
     %Calculate thermal resistance depending on method selected
     if method_heat_coeff == 'Woschni'
@@ -320,9 +330,8 @@ for t = [time_valve_exhaust+dt:dt:t_end]
     Cv = Y_prod*Cvj';
     
     delta_P = p_real(i-1)-Pref;
-    beta_exh = 1e-4;
 
-    dmdt = beta_exh*(delta_P)^(0.5);
+    dmdt = beta_exhaust*(delta_P)^(0.5);
     m_real(i) = m_real(i-1)-dt*real(dmdt);
     
     dTdt = -(alpha*Acyl(theta_crank(i-1),B,r,L))/(m_real(i-1)*Cv)*(T_real(i-1)-Tref)-(R_prod*T_real(i-1))/(V_real(i-1)*Cv)*dVdt(theta_crank(i),dthetadt,B,r,L);
@@ -346,17 +355,75 @@ Q_in = max(Q_in_real);                                                      %Hea
 n_W = abs(W/Q_in);                                                           %Efficiency using work and heat intake                                                  
 n_C = 1 - abs(min(T_real)/max(T_real));                                                     %Maximum carnot efficiency
 
+
+%% R2 Values 
+%If we want to calculate the R2 values with the data to see how well the
+%model fits then uncomment this section
+
+%{
+SSE = 0;
+SST = 0;
+sum_abs_error = 0;
+
+if data_pressure(min(find(data_volume == min(data_volume)))) > data_pressure(max(find(data_volume == min(data_volume))));
+    data_start_index = (max(find(data_volume == min(data_volume))));
+else
+    data_start_index = (min(find(data_volume == min(data_volume))));
+end
+   
+index_data = data_start_index;
+
+SSE = (data_pressure(index_data)-p_real(1))^2;
+SST = (data_pressure(index_data)-mean(data_pressure))^2;
+sum_abs_error = abs(data_pressure(index_data)-p_real(1));
+
+for g = [2:length(p_real)]  %Change to length(p_real)
+
+    stop = 0;
+    while stop == 0
+        index_data = index_data + 1;
+        if index_data > length(data_volume)
+            index_data = 1;
+            
+            index_previous = length(data_volume);
+        else 
+            index_previous = index_data-1;
+        end
+        
+        if data_volume(index_data) > data_volume(index_previous)
+            if data_volume(index_data)>V_real(g)
+                stop = 1;
+            end
+        else
+            if data_volume(index_data)<V_real(g)
+                stop = 1;
+            end
+        end
+        
+        
+    end
+     
+    SSE = SSE + (data_pressure(index_data) - p_real(g))^2;
+    SST = SST + (data_pressure(index_data)-mean(data_pressure))^2; 
+    sum_abs_error = sum_abs_error + abs(data_pressure(index_data)-p_real(g));
+end
+
+
+R2 = 1-SSE/SST;
+%}
+end
+
 %% Record results in struc
 Results.(load(l))(p).Percentage = e;
 Results.(load(l))(p).Volume= V_real;
 Results.(load(l))(p).Pressure = p_real;
 Results.(load(l))(p).Temperature = T_real;
+Results.(load(l))(p).Mass = m_real;
 Results.(load(l))(p).Entropy = s_real;
 Results.(load(l))(p).Work = W;
 Results.(load(l))(p).Heat = Q_in;
 Results.(load(l))(p).Efficiency = n_W;
 Results.(load(l))(p).Power = P;
-end
 end
 %% Figures
 
@@ -374,9 +441,11 @@ grid on
  
 for p = 1:n_eth
 plot(Results.('NoLoad')(p).Volume,Results.('NoLoad')(p).Pressure.*1e-5)
+plot(Results.('HalfLoad')(p).Volume,Results.('HalfLoad')(p).Pressure.*1e-5)
+plot(Results.('FullLoad')(p).Volume,Results.('FullLoad')(p).Pressure.*1e-5)
 end
- 
-legend(100*eth + "% Ethanol")
+
+legend('No Load', 'Half Load', 'Full Load')
  
 hold off
 
