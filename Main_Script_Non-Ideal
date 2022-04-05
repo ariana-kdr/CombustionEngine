@@ -14,6 +14,16 @@ load(TdataBase);
 %Load Parameters
 Load_Parameters = fullfile('Load_Parameters.mat');
 load(Load_Parameters)
+
+%Load experimental data
+Experiment_Data = fullfile('Experiment_Data.mat');
+load(Experiment_Data);
+
+%Load idealized cycle
+V_ideal = fullfile('V_ideal.mat');
+load(V_ideal);
+p_ideal = fullfile('p_ideal.mat')
+load(p_ideal);
 %%
 % Constants 
 global Runiv Pref Tref                                                      %Set global variables (so they cannot be changed)
@@ -52,12 +62,12 @@ Q_in_real = zeros(1,steps);                                                 %Tot
 
 %Create struct to combine all the results of the model
 
-%eth = [0,0.05,0.10,0.15];                                  % ethanol fractions (can be any string of numbers between 0 and 1)
-eth = [0];
+eth = [0,0.05,0.10,0.15, 0.2, 0.4, 0.6, 0.8];                                  % ethanol fractions (can be any string of numbers between 0 and 1)
+%eth = [0:0.01:1];
 load = ["NoLoad","HalfLoad","FullLoad"];
 n_eth = length(eth);                                                        % number of ethanol blends considered
 
-struct_eth = struct('Blend',[],'Percentage', [], 'Volume',[],'Pressure',[],'Temperature',[],'Mass', [],'Entropy',[],'Work',[],'Heat',[], 'Efficiency', [], 'Power', []); 
+struct_eth = struct('Blend',[],'Percentage', [], 'Volume',[],'Pressure',[],'Temperature',[],'Mass', [],'Entropy',[],'Work',[],'Heat',[], 'Efficiency', [], 'Power', [],'Bsfc', [], 'SpecificEmissions', []); 
 Results = struct('NoLoad', struct_eth, 'HalfLoad', struct_eth, 'FullLoad', struct_eth);
 
 for l = 1:length(load)
@@ -172,6 +182,7 @@ Q_lhv = Y_reac/(Y_reac(1) + Y_reac(2))*h_0' - Y_prod/(Y_reac(1) + Y_reac(2))*h_0
 
 m_real(i) = (Pref*V_real(i))/(Tref*R_reac);
 p_real(i) = Pref;
+m_start = m_real(1);
 
 for t = [time_intake_stroke+dt:dt:time_compression]                         %Start to end time
     i = i+1;    
@@ -206,6 +217,7 @@ for t = [time_intake_stroke+dt:dt:time_compression]                         %Sta
 
     p_real(i)= (m_real(i)*R_reac*T_real(i))/(V_real(i));                    %Ideal Gas Law
 end
+m_end = m_real(i);
 %% Real compression
 %No longer adiabatic, heat loss to surroundings is implemented
 
@@ -246,6 +258,7 @@ a = 5;                                                                      %Wie
 theta_s = theta_ignition*pi/180;                                            %Start angle of combustion [rad]
 theta_d = ignition_duration*pi/180;                                         %Combustion duration [rad]
 m_f = Y_reac(1)*m_real(i);                                                  %Mass of fuel using mass composition [kg]
+m_f = Y_reac(1)*m_real(i)+Y_reac(2)*m_real(i);                              %Mass of fuel using mass composition [kg]
 
 for t = [time_ignition+dt:dt:time_expansion]
     i = i+1;
@@ -345,73 +358,21 @@ for j = [1:length(Species)]
     sj(j)= SNasa(T_real(i),Species(j));
 end
 s_real(i)= Y_prod*sj' - R_prod * (log(p_real(i))-log(Pref));
-%% Work, Power & Efficiency Calculations
+%% Work, Power, Efficiency & Other Key Figures Calculations
 W_index = (cumtrapz(V_real,p_real));                                        %Index of work done throughout cycle [J]
-W = W_index(end);                                                           %Total work done per cyycle [J]
+W = W_index(end);                                                           %Total work done per cycle [J]
 
-P = W*3000/60;                                                                    %Power of engine [W]
+P = W*3000/2*60;                                                                    %Power of engine [W]
 
 Q_in = max(Q_in_real);                                                      %Heat added per cycle
 n_W = abs(W/Q_in);                                                           %Efficiency using work and heat intake                                                  
 n_C = 1 - abs(min(T_real)/max(T_real));                                                     %Maximum carnot efficiency
 
-
-%% R2 Values 
-%If we want to calculate the R2 values with the data to see how well the
-%model fits then uncomment this section
-
-%{
-SSE = 0;
-SST = 0;
-sum_abs_error = 0;
-
-if data_pressure(min(find(data_volume == min(data_volume)))) > data_pressure(max(find(data_volume == min(data_volume))));
-    data_start_index = (max(find(data_volume == min(data_volume))));
-else
-    data_start_index = (min(find(data_volume == min(data_volume))));
-end
-   
-index_data = data_start_index;
-
-SSE = (data_pressure(index_data)-p_real(1))^2;
-SST = (data_pressure(index_data)-mean(data_pressure))^2;
-sum_abs_error = abs(data_pressure(index_data)-p_real(1));
-
-for g = [2:length(p_real)]  %Change to length(p_real)
-
-    stop = 0;
-    while stop == 0
-        index_data = index_data + 1;
-        if index_data > length(data_volume)
-            index_data = 1;
-            
-            index_previous = length(data_volume);
-        else 
-            index_previous = index_data-1;
-        end
-        
-        if data_volume(index_data) > data_volume(index_previous)
-            if data_volume(index_data)>V_real(g)
-                stop = 1;
-            end
-        else
-            if data_volume(index_data)<V_real(g)
-                stop = 1;
-            end
-        end
-        
-        
-    end
-     
-    SSE = SSE + (data_pressure(index_data) - p_real(g))^2;
-    SST = SST + (data_pressure(index_data)-mean(data_pressure))^2; 
-    sum_abs_error = sum_abs_error + abs(data_pressure(index_data)-p_real(g));
-end
-
-
-R2 = 1-SSE/SST;
-%}
-end
+m_dot = (m_end-m_start)/0.04;
+m_dot_fuel = m_dot*Y_reac(1)+m_dot*Y_reac(2);
+bsfc = (3600*m_dot_fuel*1e3)/(P*1e-3);
+m_dot_CO2 = m_dot*Y_prod(4);
+specific_emissions = (3600*m_dot_CO2*1e3)/(P*1e-3);
 
 %% Record results in struc
 Results.(load(l))(p).Percentage = e;
@@ -424,12 +385,15 @@ Results.(load(l))(p).Work = W;
 Results.(load(l))(p).Heat = Q_in;
 Results.(load(l))(p).Efficiency = n_W;
 Results.(load(l))(p).Power = P;
+Results.(load(l))(p).Bsfc = bsfc;
+Results.(load(l))(p).SpecificEmissions = specific_emissions;
+end
 end
 %% Figures
 
 figure 
 hold on 
-set(gca,'FontSize',18) 
+%set(gca,'FontSize',18) 
 title('P-v Diagram for the Real Cycle')
 xlabel('Volume [m^3]')
 ylabel('Pressure [bar]')
@@ -449,52 +413,95 @@ legend('No Load', 'Half Load', 'Full Load')
  
 hold off
 
-%{
+
+for l = 1:length(load)
+loadtype = char(load(l));
+    
 figure 
-hold on 
-set(gca,'FontSize',18) 
-title('T-s Diagram for the Real Cycle')
-xlabel('Entropy [kJ/kgK]')
-ylabel('Temperature [K]')
-xlim([6000 11000])
-ylim([0 3000])
+hold on  
+title('Results ' + convertCharsToStrings(loadtype(1:strlength(loadtype)-4)) + ' ' + convertCharsToStrings(loadtype(strlength(loadtype)-3:strlength(loadtype))) + ' All Ethanol Blends')
+xlabel('Volume [m^3]')
+ylabel('Pressure [bar]')
+xlim([0 inf])
+ylim([0 inf])
 
 grid on
-%}
-%{
 for p = 1:n_eth
-plot(Results(p).Entropy,Results(p).Temperature)
+plot(Results.(load(l))(p).Volume,Results.(load(l))(p).Pressure.*1e-5)
+end
+legend(100*eth + "% Ethanol")
+hold off
 end
 
-legend(100*eth + "% Ethanol")
-
-
-hold off
-P = [Results.Percentage];
-
-figure
+figure 
 hold on
-set(gca,'FontSize',18) 
-title('Efficiency over Ethanol Percentage')
-xlabel('Ethanol (%)')
-ylabel('Thermal Efficiency (%)')
-ylim([0.2 0.5])
-plot([Results.Percentage], [Results.Efficiency])
+for l = 1:length(load)
+    l_flip = length(load)+1-l;
+    
+    title('Efficiency for Different Blends')
+    xlabel('Ethanol Blend [%]')
+    ylabel('Efficiency [-]')
+    xlim([0 inf])
+    ylim([0 0.4])
+    
+    plot([Results.(load(l)).Percentage], [Results.(load(l)).Efficiency])
+    %scatter([0,0.05,0.1,0.15],[Experiment_Data([l_flip l_flip+3 l_flip+6 l_flip+9]).Efficiency].*(1/100))
+    
+end
+legend('No Load', 'Half Load', 'Full Load' )
 hold off
-%}
+for l = 1:length(load)
+    
+    index_max = find([Results.(load(l)).Efficiency] == min([Results.(load(l)).Efficiency]));
+    
+    eth_opt(l) = Results.(load(l))(find([Results.(load(l)).Efficiency] == max([Results.(load(l)).Efficiency]))).Percentage;
+end
 
-% figure
-% plot((1:steps)*dt,s_real)
-% title('Entropy over time')
-% ylabel('Entropy [kJ/kgK]')
-% xlabel('Time [s]')
-% 
-% 
-% figure
-% plot((1:steps)*dt,T_real)
-% title('Temperature over time')
-% ylabel('Temperature [K]')
-% xlabel('Time [s]')
+figure 
+hold on 
+title('Comparison Idealized and Real Cycle')
+xlabel('Volume [m^3]')
+ylabel('Pressure [bar]')
+xlim([0 inf])
+ylim([0 inf])
+
+plot(V_ideal,p_ideal.*1e-5)
+plot(Results.('FullLoad')(1).Volume, Results.('FullLoad')(1).Pressure.*1e-5)
+hold off
+
+%% Subplot
+
+plot_no = 0;
+
+    for p = 1:length(eth)
+        
+        for l = 1:length(load)
+        l_flip = length(load)+1-l;
+        loadtype = char(load(l));
+        plot_no = plot_no + 1;
+        %Fix order
+        subplot(length(eth),length(load),plot_no)
+        title('Comparison for ' + convertCharsToStrings(num2str(100*eth(p))) + '% Ethanol, ' + convertCharsToStrings(loadtype(1:strlength(loadtype)-4)) + ' ' + convertCharsToStrings(loadtype(strlength(loadtype)-3:strlength(loadtype))))
+        %title('test')
+        xlabel('Volume [m^3]')
+        ylabel('Pressure [bar]')
+        
+        hold on 
+        plot(Results.(load(l))(p).Volume,Results.(load(l))(p).Pressure.*1e-5)
+        
+        plot(Experiment_Data(l_flip+3*(p-1)).Volume, Experiment_Data(l_flip+3*(p-1)).Pressure_filtered)
+        xlim([0 inf])
+        ylim([0 inf])
+        
+        hold off
+        legend('Model','Experiment')
+        
+    end
+    
+end
+
+
+
 %% Functions
 
 function [Vcyl] = Vcyl(theta,B,r,L,V_c)
